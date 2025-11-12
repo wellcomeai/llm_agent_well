@@ -2,7 +2,7 @@
  * Travel Agent - ChatGPT Style UI
  * Clean, minimal chat interface with SSE streaming
  * 
- * 🔧 FIXED: Unique IDs for assistant messages to prevent DOM conflicts
+ * 🔧 FIXED: Race condition, unique message IDs, proper state management
  */
 
 // ============================================================================
@@ -11,6 +11,8 @@
 let currentEventSource = null;
 let sessionId = null;
 let startTime = null;
+let isProcessing = false;  // 🔧 NEW: Prevent parallel requests
+let currentMessageId = null;  // 🔧 NEW: Track current message being processed
 
 // ============================================================================
 // INITIALIZATION
@@ -79,8 +81,8 @@ function handleInputChange() {
     const input = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
 
-    // Enable/disable send button based on input
-    sendBtn.disabled = !input.value.trim();
+    // Enable/disable send button based on input and processing state
+    sendBtn.disabled = !input.value.trim() || isProcessing;
 
     // Auto-resize textarea
     autoResizeTextarea();
@@ -112,6 +114,17 @@ async function sendMessage() {
         return;
     }
 
+    // 🔧 FIXED: Prevent parallel requests
+    if (isProcessing) {
+        console.warn('⚠️  Already processing a message, please wait');
+        return;
+    }
+
+    console.log('📤 [SEND] Starting new message:', message);
+
+    // Set processing flag
+    isProcessing = true;
+
     // Hide welcome message
     hideWelcomeMessage();
 
@@ -126,10 +139,15 @@ async function sendMessage() {
     // Disable input during processing
     setInputEnabled(false);
 
-    // Close any existing SSE connection
+    // 🔧 FIXED: Properly close previous connection
     if (currentEventSource) {
+        console.log('🧹 [SEND] Closing previous SSE connection');
         currentEventSource.close();
+        currentEventSource = null;
     }
+
+    // 🔧 FIXED: Clear previous message ID
+    currentMessageId = null;
 
     // Create SSE connection
     const url = `/api/stream?q=${encodeURIComponent(message)}&session_id=${encodeURIComponent(sessionId)}`;
@@ -138,9 +156,10 @@ async function sendMessage() {
         currentEventSource = new EventSource(url);
         setupSSEEventListeners(currentEventSource);
     } catch (error) {
-        console.error('Error creating EventSource:', error);
+        console.error('❌ [SEND] Error creating EventSource:', error);
         showError('Не удалось установить соединение с сервером');
         setInputEnabled(true);
+        isProcessing = false;
     }
 }
 
@@ -159,13 +178,23 @@ function addUserMessage(text) {
     `;
     messagesWrapper.appendChild(messageDiv);
     scrollToBottom();
+    
+    console.log('💬 [UI] User message added');
 }
 
-// 🔧 FIXED: Use current-message class instead of ID
+// 🔧 FIXED: Generate and store unique message ID
 function addAssistantMessage() {
     const messagesWrapper = document.getElementById('messagesWrapper');
+    
+    // 🔧 Generate unique message ID
+    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    currentMessageId = messageId;
+    
+    console.log(`💬 [UI] Creating assistant message with ID: ${messageId}`);
+    
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message assistant-message current-message';  // ← класс вместо ID
+    messageDiv.className = 'message assistant-message';
+    messageDiv.dataset.messageId = messageId;  // Store ID in data attribute
     
     messageDiv.innerHTML = `
         <div class="message-avatar">🤖</div>
@@ -184,16 +213,29 @@ function addAssistantMessage() {
     
     messagesWrapper.appendChild(messageDiv);
     scrollToBottom();
+    
+    console.log(`✅ [UI] Assistant message created: ${messageId}`);
     return messageDiv;
 }
 
-// 🔧 FIXED: Query current message by class
+// 🔧 FIXED: Target specific message by ID
 function updateThinkingSteps(step) {
-    const currentMessage = document.querySelector('.current-message');
-    if (!currentMessage) return;
+    if (!currentMessageId) {
+        console.error('❌ [UI] No current message ID set');
+        return;
+    }
+    
+    const currentMessage = document.querySelector(`[data-message-id="${currentMessageId}"]`);
+    if (!currentMessage) {
+        console.error(`❌ [UI] Message not found: ${currentMessageId}`);
+        return;
+    }
     
     const thinkingSteps = currentMessage.querySelector('.thinking-steps');
-    if (!thinkingSteps) return;
+    if (!thinkingSteps) {
+        console.error(`❌ [UI] Thinking steps container not found in message: ${currentMessageId}`);
+        return;
+    }
 
     const stepDiv = document.createElement('div');
     stepDiv.className = `react-step ${step.step_type}`;
@@ -214,33 +256,38 @@ function updateThinkingSteps(step) {
     }
 
     scrollToBottom();
+    
+    console.log(`📝 [UI] Step added to message ${currentMessageId}:`, step.step_type);
 }
 
-// 🔧 FIXED: Query current message by class
+// 🔧 FIXED: Target specific message by ID
 function showFinalResponse(text) {
     console.log('💬 [UI] showFinalResponse called with text length:', text?.length || 0);
-    console.log('💬 [UI] Text preview:', text?.substring(0, 100));
+    console.log('💬 [UI] Current message ID:', currentMessageId);
 
-    const currentMessage = document.querySelector('.current-message');
+    if (!currentMessageId) {
+        console.error('❌ [UI] No current message ID set');
+        return;
+    }
+
+    const currentMessage = document.querySelector(`[data-message-id="${currentMessageId}"]`);
     if (!currentMessage) {
-        console.error('❌ [UI] current message not found!');
+        console.error(`❌ [UI] Message not found: ${currentMessageId}`);
         return;
     }
     
     const assistantText = currentMessage.querySelector('.message-text');
     if (assistantText) {
-        console.log('💬 [UI] Found assistantText element, setting content');
+        console.log(`✅ [UI] Setting text for message ${currentMessageId}`);
         assistantText.textContent = text;
         assistantText.style.display = 'block';
-        console.log('💬 [UI] Content displayed successfully');
     } else {
-        console.error('❌ [UI] message-text element not found!');
+        console.error(`❌ [UI] message-text element not found in message: ${currentMessageId}`);
     }
 
-    // Remove current-message class so next message won't conflict
-    currentMessage.classList.remove('current-message');
-
     scrollToBottom();
+    
+    console.log(`✅ [UI] Final response displayed for message ${currentMessageId}`);
 }
 
 // ============================================================================
@@ -266,6 +313,7 @@ function setupSSEEventListeners(eventSource) {
         console.log('📥 [SSE] Received START event:', event.data);
         startTime = Date.now();
 
+        // 🔧 Create assistant message container
         addAssistantMessage();
 
         const data = JSON.parse(event.data);
@@ -311,7 +359,6 @@ function setupSSEEventListeners(eventSource) {
         const step = JSON.parse(event.data);
 
         console.log('📥 [SSE] DONE content length:', step.content?.length || 0);
-        console.log('📥 [SSE] DONE content preview:', step.content?.substring(0, 100));
 
         updateThinkingSteps({
             step_type: 'done',
@@ -321,9 +368,9 @@ function setupSSEEventListeners(eventSource) {
         showFinalResponse(step.content);
 
         // Update timing
-        if (startTime) {
+        if (startTime && currentMessageId) {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-            const currentMessage = document.querySelector('.assistant-message:last-child');
+            const currentMessage = document.querySelector(`[data-message-id="${currentMessageId}"]`);
             if (currentMessage) {
                 const timeElement = currentMessage.querySelector('.thinking-time');
                 if (timeElement) {
@@ -332,10 +379,12 @@ function setupSSEEventListeners(eventSource) {
             }
         }
 
-        // Cleanup
+        // 🔧 FIXED: Proper cleanup
         console.log('✅ [SSE] Closing connection');
         eventSource.close();
         currentEventSource = null;
+        currentMessageId = null;  // Clear message ID
+        isProcessing = false;  // Reset processing flag
         setInputEnabled(true);
     });
 
@@ -362,10 +411,12 @@ function setupSSEEventListeners(eventSource) {
             }
         }
 
-        // Cleanup
-        console.log('🧹 [SSE] Cleaning up connection');
+        // 🔧 FIXED: Proper cleanup on error
+        console.log('🧹 [SSE] Cleaning up after error');
         eventSource.close();
         currentEventSource = null;
+        currentMessageId = null;
+        isProcessing = false;
         setInputEnabled(true);
     });
 
@@ -378,28 +429,32 @@ function setupSSEEventListeners(eventSource) {
 // ERROR HANDLING
 // ============================================================================
 function showError(message) {
-    const currentMessage = document.querySelector('.current-message');
-
-    if (currentMessage) {
-        // Add error to current message thinking steps
-        updateThinkingSteps({
-            step_type: 'error',
-            content: message
-        });
-    } else {
-        // Create new error message
-        const messagesWrapper = document.getElementById('messagesWrapper');
-        const messageDiv = document.createElement('div');
-        messageDiv.className = 'message assistant-message';
-        messageDiv.innerHTML = `
-            <div class="message-avatar">🤖</div>
-            <div class="message-content">
-                <div class="message-text" style="color: var(--color-error);">❌ ${escapeHtml(message)}</div>
-            </div>
-        `;
-        messagesWrapper.appendChild(messageDiv);
-        scrollToBottom();
+    console.error('🔴 [ERROR] Showing error:', message);
+    
+    // Try to add error to current message if exists
+    if (currentMessageId) {
+        const currentMessage = document.querySelector(`[data-message-id="${currentMessageId}"]`);
+        if (currentMessage) {
+            updateThinkingSteps({
+                step_type: 'error',
+                content: message
+            });
+            return;
+        }
     }
+    
+    // Otherwise create new error message
+    const messagesWrapper = document.getElementById('messagesWrapper');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant-message';
+    messageDiv.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="message-content">
+            <div class="message-text" style="color: var(--color-error);">❌ ${escapeHtml(message)}</div>
+        </div>
+    `;
+    messagesWrapper.appendChild(messageDiv);
+    scrollToBottom();
 }
 
 // ============================================================================
@@ -458,6 +513,8 @@ function clearChat() {
         return;
     }
 
+    console.log('🗑️  [CLEAR] Clearing chat');
+
     const messagesWrapper = document.getElementById('messagesWrapper');
 
     // Remove all messages
@@ -477,6 +534,10 @@ function clearChat() {
         currentEventSource = null;
     }
 
+    // Reset state
+    currentMessageId = null;
+    isProcessing = false;
+
     // Reset input
     const input = document.getElementById('userInput');
     input.value = '';
@@ -484,7 +545,7 @@ function clearChat() {
     input.focus();
     handleInputChange();
 
-    console.log('Chat cleared, new session:', sessionId);
+    console.log('✅ [CLEAR] Chat cleared, new session:', sessionId);
 }
 
 // ============================================================================
@@ -543,7 +604,7 @@ function exportChat() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    console.log('Chat exported');
+    console.log('💾 [EXPORT] Chat exported');
 }
 
 // ============================================================================
