@@ -29,7 +29,8 @@ class ContextExtractor:
         'париж', 'парижа', 'лондон', 'лондона', 'берлин', 'берлина',
         'токио', 'нью-йорк', 'дубай', 'дубая', 'стамбул', 'стамбула',
         'рим', 'рима', 'барселона', 'барселоны', 'амстердам', 'амстердама',
-        'прага', 'праги', 'вена', 'вены', 'будапешт', 'будапешта'
+        'прага', 'праги', 'вена', 'вены', 'будапешт', 'будапешта',
+        'тайланд', 'бангкок', 'пхукет'
     ]
 
     def __init__(self, llm: ChatOpenAI):
@@ -185,7 +186,10 @@ class ContextExtractor:
             'амстердам': 'Амстердам', 'амстердама': 'Амстердам',
             'прага': 'Прага', 'праги': 'Прага',
             'вена': 'Вена', 'вены': 'Вена',
-            'будапешт': 'Будапешт', 'будапешта': 'Будапешт'
+            'будапешт': 'Будапешт', 'будапешта': 'Будапешт',
+            'тайланд': 'Тайланд',
+            'бангкок': 'Бангкок',
+            'пхукет': 'Пхукет'
         }
 
         return city_map.get(city, city.capitalize())
@@ -217,8 +221,14 @@ class ContextExtractor:
 
                 history_text += f"{role}: {content}\n"
 
+        # Получить текущий год для промпта
+        current_year = datetime.now().year
+        current_date = datetime.now().strftime('%Y-%m-%d')
+
         prompt = f"""Проанализируй историю диалога и текущий запрос пользователя.
 Извлеки информацию о путешествии.
+
+ТЕКУЩАЯ ДАТА: {current_date}
 
 История диалога:
 {history_text}
@@ -238,9 +248,11 @@ class ContextExtractor:
 1. Извлекай информацию из ВСЕЙ истории, не только из последнего сообщения
 2. Если информация не найдена - используй null
 3. Даты ОБЯЗАТЕЛЬНО в формате YYYY-MM-DD
-4. Ответ ДОЛЖЕН быть валидным JSON без дополнительного текста
-5. Если пользователь говорит "в Париж" - это destination
-6. Если пользователь говорит "из Москвы" - это origin
+4. Если год не указан явно - используй текущий год {current_year}
+5. Ответ ДОЛЖЕН быть валидным JSON без дополнительного текста
+6. Если пользователь говорит "в Париж" или "в Тайланд" - это destination
+7. Если пользователь говорит "из Москвы" - это origin
+8. Если дата в прошлом - используй следующий год
 """
 
         try:
@@ -261,6 +273,29 @@ class ContextExtractor:
 
             if result.get('passengers') == 'null' or not result.get('passengers'):
                 result['passengers'] = None
+
+            # ИСПРАВЛЕНО: Валидация дат - если год в прошлом, заменить на текущий или следующий
+            current_year = datetime.now().year
+            current_date_obj = datetime.now()
+
+            for date_field in ['departure_date', 'return_date']:
+                if result.get(date_field):
+                    try:
+                        date_obj = datetime.strptime(result[date_field], '%Y-%m-%d')
+                        
+                        # Если дата в прошлом
+                        if date_obj < current_date_obj:
+                            # Если месяц уже прошел в этом году - берем следующий год
+                            if date_obj.month < current_date_obj.month:
+                                new_year = current_year + 1
+                            else:
+                                new_year = current_year
+                            
+                            result[date_field] = f"{new_year}-{date_obj.month:02d}-{date_obj.day:02d}"
+                            print(f"Date corrected: {date_obj.date()} -> {result[date_field]}")
+                    except Exception as e:
+                        print(f"Date validation error for {date_field}: {e}")
+                        pass
 
             return result
 
