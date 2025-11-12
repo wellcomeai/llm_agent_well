@@ -9,7 +9,7 @@ Query Router для классификации запросов.
 
 import logging
 import json
-from typing import Optional
+from typing import Optional, List, Any
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 
@@ -396,3 +396,151 @@ if __name__ == "__main__":
 
     # Run tests
     asyncio.run(test_router())
+
+
+# ============================================================================
+# INTENT CLASSIFIER
+# ============================================================================
+
+class IntentClassifier:
+    """
+    Детальная классификация намерений пользователя.
+
+    Определяет конкретное намерение (intent) для более точной обработки.
+    """
+
+    # Месяцы для распознавания дат
+    MONTHS = [
+        'январ', 'феврал', 'март', 'апрел', 'ма', 'июн',
+        'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'декабр'
+    ]
+
+    # Intent паттерны
+    INTENTS = {
+        'weather_check': {
+            'patterns': ['погода', 'температура', 'какая погода', 'погоду в', 'погоде в'],
+            'requires': []  # Не требует дополнительных данных
+        },
+        'flight_search': {
+            'patterns': [
+                'найди рейсы', 'найти рейсы', 'билеты', 'билет',
+                'перелет', 'перелёт', 'лететь', 'полететь',
+                'рейсы из', 'рейсы в', 'поиск рейсов'
+            ],
+            'requires': ['origin', 'destination', 'departure_date']
+        },
+        'trip_planning': {
+            'patterns': [
+                'спланируй', 'спланировать', 'план поездки',
+                'маршрут', 'поездку в', 'путешествие в'
+            ],
+            'requires': ['destination']
+        },
+        'hotel_search': {
+            'patterns': [
+                'отель', 'отели', 'гостиница', 'гостиницы',
+                'где остановиться', 'где жить', 'проживание'
+            ],
+            'requires': ['destination']
+        },
+        'context_update': {
+            'patterns': ['из ', 'в ', 'на '],  # Короткие уточнения
+            'requires': []
+        },
+        'general_question': {
+            'patterns': ['что такое', 'как', 'почему', 'расскажи', 'объясни'],
+            'requires': []
+        }
+    }
+
+    def classify_intent(self, query: str, state: Optional[Any] = None) -> str:
+        """
+        Определить intent пользовательского запроса.
+
+        Args:
+            query: Запрос пользователя
+            state: TravelContext состояние (опционально)
+
+        Returns:
+            str: Название intent'а
+        """
+        query_lower = query.lower().strip()
+
+        # 1. Проверка на короткие уточнения (context_update)
+        if self._is_context_update(query_lower):
+            return 'context_update'
+
+        # 2. Проверка специфичных интентов
+        for intent_name, intent_data in self.INTENTS.items():
+            if intent_name == 'context_update':
+                continue  # Уже проверили
+
+            for pattern in intent_data['patterns']:
+                if pattern in query_lower:
+                    return intent_name
+
+        # 3. Fallback - общий вопрос
+        return 'general_question'
+
+    def _is_context_update(self, query_lower: str) -> bool:
+        """Проверить, является ли запрос коротким уточнением контекста"""
+
+        words = query_lower.split()
+
+        # Короткий ответ (≤ 5 слов)
+        if len(words) > 5:
+            return False
+
+        # Содержит предлоги + город/дату
+        has_preposition = any(
+            query_lower.startswith(prep)
+            for prep in ['из ', 'в ', 'на ', 'с ', 'до ']
+        )
+
+        # Содержит месяц
+        has_month = any(month in query_lower for month in self.MONTHS)
+
+        # Содержит дату (числа)
+        has_date = any(char.isdigit() for char in query_lower)
+
+        return has_preposition or has_month or has_date
+
+    def get_required_fields(self, intent: str) -> List[str]:
+        """
+        Получить список обязательных полей для intent'а.
+
+        Args:
+            intent: Название intent'а
+
+        Returns:
+            List[str]: Список обязательных полей
+        """
+        return self.INTENTS.get(intent, {}).get('requires', [])
+
+    def check_completeness(
+        self,
+        intent: str,
+        state: Optional[Any] = None
+    ) -> tuple[bool, List[str]]:
+        """
+        Проверить, достаточно ли данных в state для выполнения intent'а.
+
+        Args:
+            intent: Название intent'а
+            state: TravelContext с состоянием
+
+        Returns:
+            Tuple[bool, List[str]]: (is_complete, missing_fields)
+        """
+        if state is None:
+            required = self.get_required_fields(intent)
+            return (False, required) if required else (True, [])
+
+        required = self.get_required_fields(intent)
+        missing = []
+
+        for field in required:
+            if not getattr(state, field, None):
+                missing.append(field)
+
+        return (len(missing) == 0, missing)

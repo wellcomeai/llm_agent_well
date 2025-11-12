@@ -1,17 +1,23 @@
 """
-Travel Agent with Plan-and-Execute Architecture - Version 2.0
+Travel Agent with Plan-and-Execute Architecture - Version 2.1
 
-Новая архитектура:
+Новая архитектура с Context Management:
 1. Router → классификация запросов (simple vs agent)
-2. Planner → создание структурированных планов
-3. Orchestrator → параллельное выполнение
-4. Reflector → проверка результатов и replan
+2. ContextExtractor → извлечение сущностей из истории диалога
+3. StateManager → управление состоянием путешествия (TravelContext)
+4. IntentClassifier → определение намерения пользователя
+5. Planner → создание структурированных планов с обогащённым контекстом
+6. Orchestrator → параллельное выполнение
+7. Reflector → проверка результатов и replan
 
 Преимущества над ReAct:
 - Параллельное выполнение независимых шагов
 - Показ плана пользователю ДО выполнения
 - Меньше путаницы в контексте
 - Лучше handling ошибок
+- Автоматическое извлечение контекста из истории диалога
+- Интеллектуальная обработка коротких уточнений
+- Проверка полноты данных перед выполнением действий
 """
 
 import os
@@ -27,11 +33,13 @@ from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.router import QueryRouter
+from core.router import QueryRouter, IntentClassifier
 from core.planner import TaskPlanner
 from core.orchestrator import PlanOrchestrator
 from core.reflector import ResultReflector
 from core.models import RouteType, ReflectionStatus
+from core.state_manager import StateManager, TravelContext
+from core.context_extractor import ContextExtractor
 
 # Import tools
 from functions.weather import get_weather
@@ -53,16 +61,24 @@ logger = logging.getLogger(__name__)
 
 class TravelAgent:
     """
-    Travel Agent с Plan-and-Execute архитектурой.
+    Travel Agent с Plan-and-Execute архитектурой и Context Management.
 
     Pipeline:
     1. Router → определить нужен ли агент
-    2. Planner → создать план
-    3. Показать план пользователю
-    4. Orchestrator → выполнить параллельно
-    5. Reflector → проверить результаты
-    6. Если нужен replan → goto 2
-    7. Синтезировать финальный ответ
+    2. ContextExtractor → извлечь сущности из истории
+    3. IntentClassifier → определить намерение пользователя
+    4. Check completeness → проверить достаточно ли данных
+    5. Planner → создать план с контекстом
+    6. Показать план пользователю
+    7. Orchestrator → выполнить параллельно
+    8. Reflector → проверить результаты
+    9. Если нужен replan → goto 5
+    10. Синтезировать финальный ответ
+
+    Components:
+    - StateManager: Управление состоянием сессий (города, даты, пассажиры)
+    - ContextExtractor: Извлечение сущностей из истории диалога
+    - IntentClassifier: Классификация намерений (weather_check, flight_search, etc.)
     """
 
     def __init__(
@@ -105,12 +121,17 @@ class TravelAgent:
         self.orchestrator = PlanOrchestrator(self.tools_dict, max_workers=5)
         self.reflector = ResultReflector(self.llm, max_replans=2)
 
+        # New: Context management components
+        self.state_manager = StateManager()
+        self.context_extractor = ContextExtractor(self.llm)
+        self.intent_classifier = IntentClassifier()
+
         logger.info("All components initialized successfully")
 
         # Session memories
         self.memories: Dict[str, ConversationSummaryBufferMemory] = {}
 
-        logger.info("TravelAgent V2 ready!")
+        logger.info("TravelAgent V2 ready with context management!")
 
     def _get_memory(self, session_id: str) -> ConversationSummaryBufferMemory:
         """Get or create memory for session."""
@@ -125,6 +146,73 @@ class TravelAgent:
             )
 
         return self.memories[session_id]
+
+    async def _extract_and_update_context(
+        self,
+        query: str,
+        session_id: str,
+        memory: ConversationSummaryBufferMemory
+    ) -> TravelContext:
+        """
+        Извлечь контекст из истории и обновить состояние.
+
+        Args:
+            query: Текущий запрос
+            session_id: ID сессии
+            memory: Память сессии
+
+        Returns:
+            TravelContext: Обновлённое состояние
+        """
+        logger.info("Extracting context from conversation history")
+
+        # Получить историю из памяти
+        chat_history = []
+        if hasattr(memory, 'chat_memory') and memory.chat_memory.messages:
+            for msg in memory.chat_memory.messages:
+                chat_history.append({
+                    "role": msg.type,
+                    "content": msg.content
+                })
+
+        # Извлечь сущности (города, даты, пассажиры)
+        extracted = self.context_extractor.extract_context(chat_history, query)
+
+        logger.info(f"Extracted context: {json.dumps(extracted, ensure_ascii=False)}")
+
+        # Обновить состояние сессии
+        state = self.state_manager.update_state(session_id, extracted)
+
+        logger.info(f"Updated state: {state.get_summary()}")
+
+        return state
+
+    def _create_enriched_context(
+        self,
+        query: str,
+        state: TravelContext
+    ) -> Dict[str, Any]:
+        """
+        Создать обогащённый контекст для planner'а.
+
+        Args:
+            query: Запрос пользователя
+            state: Состояние сессии
+
+        Returns:
+            Словарь с контекстными данными
+        """
+        context = {
+            "original_query": query,
+            "travel_context": state.to_dict(),
+            "state_summary": state.get_summary()
+        }
+
+        # Добавить инфу о недостающих полях
+        if not state.is_complete_for_search():
+            context["missing_for_search"] = state.get_missing_fields()
+
+        return context
 
     async def _synthesize_final_answer(
         self,
@@ -188,19 +276,24 @@ class TravelAgent:
         session_id: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Главный метод обработки запроса.
+        Главный метод обработки запроса с context management.
 
         Pipeline:
         1. Router → определить тип (simple/agent)
         2. Если simple → прямой ответ
         3. Если agent:
-           a. Planner → создать план
-           b. Yield план пользователю
-           c. Orchestrator → выполнить
-           d. Yield прогресс
-           e. Reflector → проверить
-           f. Если needs_replan → goto 3a
-           g. Yield финальный ответ
+           a. Extract context → извлечь сущности из истории
+           b. Classify intent → определить намерение пользователя
+           c. Check completeness → проверить достаточно ли данных
+           d. Если нужны данные → запросить у пользователя
+           e. Если context_update → подтвердить и выйти
+           f. Planner → создать план с обогащённым контекстом
+           g. Yield план пользователю
+           h. Orchestrator → выполнить параллельно
+           i. Yield прогресс выполнения
+           j. Reflector → проверить результаты
+           k. Если needs_replan → goto 3f
+           l. Yield финальный ответ
 
         Args:
             query: Запрос пользователя
@@ -263,20 +356,80 @@ class TravelAgent:
             # 3. AGENT ROUTE - Plan and Execute
             logger.info("Agent route - starting plan-and-execute")
 
-            # Get memory context (convert to simple format)
+            # Get memory and extract context
             memory = self._get_memory(session_id)
-            chat_history = []
-            if hasattr(memory, 'chat_memory') and memory.chat_memory.messages:
-                # Convert LangChain messages to simple dicts
-                for msg in memory.chat_memory.messages:
-                    chat_history.append({
-                        "role": msg.type,
-                        "content": msg.content
-                    })
 
-            context = {
-                "chat_history": chat_history
+            # Extract context from conversation history
+            state = await self._extract_and_update_context(query, session_id, memory)
+
+            yield {
+                "event": "context_extracted",
+                "data": {
+                    "state_summary": state.get_summary(),
+                    "is_complete": state.is_complete_for_search()
+                }
             }
+
+            # Classify intent
+            intent = self.intent_classifier.classify_intent(query, state)
+            logger.info(f"Detected intent: {intent}")
+
+            yield {
+                "event": "intent_detected",
+                "data": {"intent": intent}
+            }
+
+            # Check if we have enough context for the intent
+            is_complete, missing_fields = self.intent_classifier.check_completeness(intent, state)
+
+            if not is_complete and intent == 'flight_search':
+                # Need more information for flight search
+                missing_ru = []
+                for field in missing_fields:
+                    if field == 'origin':
+                        missing_ru.append('город вылета')
+                    elif field == 'destination':
+                        missing_ru.append('город назначения')
+                    elif field == 'departure_date':
+                        missing_ru.append('дату вылета')
+
+                response_text = f"Для поиска рейсов мне нужно уточнить: {', '.join(missing_ru)}."
+
+                yield {
+                    "event": "need_more_info",
+                    "data": {
+                        "message": response_text,
+                        "missing_fields": missing_fields
+                    }
+                }
+
+                memory.save_context(
+                    {"input": query},
+                    {"output": response_text}
+                )
+
+                yield {"event": "done", "data": {"type": "need_info"}}
+                return
+
+            # Handle context_update intent (short clarifications)
+            if intent == 'context_update':
+                response_text = f"Понял! {state.get_summary()}. Чем ещё могу помочь?"
+
+                yield {
+                    "event": "context_update_acknowledged",
+                    "data": {"message": response_text, "state": state.to_dict()}
+                }
+
+                memory.save_context(
+                    {"input": query},
+                    {"output": response_text}
+                )
+
+                yield {"event": "done", "data": {"type": "context_update"}}
+                return
+
+            # Create enriched context for planner
+            context = self._create_enriched_context(query, state)
 
             # Replan loop
             max_replans = 2
