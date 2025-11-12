@@ -1,6 +1,8 @@
 /**
  * Travel Agent - ChatGPT Style UI
  * Clean, minimal chat interface with SSE streaming
+ * 
+ * 🔧 FIXED: Unique IDs for assistant messages to prevent DOM conflicts
  */
 
 // ============================================================================
@@ -159,11 +161,12 @@ function addUserMessage(text) {
     scrollToBottom();
 }
 
+// 🔧 FIXED: Use current-message class instead of ID
 function addAssistantMessage() {
     const messagesWrapper = document.getElementById('messagesWrapper');
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message assistant-message';
-    messageDiv.id = 'currentAssistantMessage';
+    messageDiv.className = 'message assistant-message current-message';  // ← класс вместо ID
+    
     messageDiv.innerHTML = `
         <div class="message-avatar">🤖</div>
         <div class="message-content">
@@ -173,25 +176,29 @@ function addAssistantMessage() {
                     <span class="thinking-text">Thinking...</span>
                     <span class="thinking-time">0s</span>
                 </div>
-                <div class="thinking-steps" id="thinkingSteps"></div>
+                <div class="thinking-steps"></div>
             </div>
-            <div class="message-text" id="assistantText" style="display:none;"></div>
+            <div class="message-text" style="display:none;"></div>
         </div>
     `;
+    
     messagesWrapper.appendChild(messageDiv);
     scrollToBottom();
     return messageDiv;
 }
 
+// 🔧 FIXED: Query current message by class
 function updateThinkingSteps(step) {
-    const thinkingSteps = document.getElementById('thinkingSteps');
+    const currentMessage = document.querySelector('.current-message');
+    if (!currentMessage) return;
+    
+    const thinkingSteps = currentMessage.querySelector('.thinking-steps');
     if (!thinkingSteps) return;
 
     const stepDiv = document.createElement('div');
     stepDiv.className = `react-step ${step.step_type}`;
-
     const icon = getStepIcon(step.step_type);
-
+    
     stepDiv.innerHTML = `
         <span class="step-icon">${icon}</span>
         <span class="step-text">${escapeHtml(step.content)}</span>
@@ -200,41 +207,38 @@ function updateThinkingSteps(step) {
     thinkingSteps.appendChild(stepDiv);
 
     // Update step count
-    const currentMessage = document.getElementById('currentAssistantMessage');
-    if (currentMessage) {
-        const thinkingText = currentMessage.querySelector('.thinking-text');
-        const stepCount = thinkingSteps.children.length;
-        if (thinkingText) {
-            thinkingText.textContent = `Thinking... (${stepCount} steps)`;
-        }
+    const thinkingText = currentMessage.querySelector('.thinking-text');
+    const stepCount = thinkingSteps.children.length;
+    if (thinkingText) {
+        thinkingText.textContent = `Thinking... (${stepCount} steps)`;
     }
 
     scrollToBottom();
 }
 
+// 🔧 FIXED: Query current message by class
 function showFinalResponse(text) {
-    console.log('💬 [UI] showFinalResponse called with text length:', text?.length || 0);  // 🔥 ДОБАВЛЕНО
-    console.log('💬 [UI] Text preview:', text?.substring(0, 100));  // 🔥 ДОБАВЛЕНО
+    console.log('💬 [UI] showFinalResponse called with text length:', text?.length || 0);
+    console.log('💬 [UI] Text preview:', text?.substring(0, 100));
 
-    const assistantText = document.getElementById('assistantText');
+    const currentMessage = document.querySelector('.current-message');
+    if (!currentMessage) {
+        console.error('❌ [UI] current message not found!');
+        return;
+    }
+    
+    const assistantText = currentMessage.querySelector('.message-text');
     if (assistantText) {
-        console.log('💬 [UI] Found assistantText element, setting content');  // 🔥 ДОБАВЛЕНО
+        console.log('💬 [UI] Found assistantText element, setting content');
         assistantText.textContent = text;
         assistantText.style.display = 'block';
-        console.log('💬 [UI] Content displayed successfully');  // 🔥 ДОБАВЛЕНО
+        console.log('💬 [UI] Content displayed successfully');
     } else {
-        console.error('❌ [UI] assistantText element not found!');  // 🔥 ДОБАВЛЕНО
+        console.error('❌ [UI] message-text element not found!');
     }
 
-    // Remove current message ID
-    const currentMessage = document.getElementById('currentAssistantMessage');
-    if (currentMessage) {
-        currentMessage.removeAttribute('id');
-    }
-
-    // Remove thinking steps and time IDs
-    const thinkingSteps = document.querySelectorAll('#thinkingSteps');
-    thinkingSteps.forEach(el => el.removeAttribute('id'));
+    // Remove current-message class so next message won't conflict
+    currentMessage.classList.remove('current-message');
 
     scrollToBottom();
 }
@@ -253,14 +257,13 @@ function toggleThinking(header) {
 // SSE EVENT LISTENERS
 // ============================================================================
 function setupSSEEventListeners(eventSource) {
-    // 🔥 ДОБАВЛЕНО: Обработка открытия соединения
     eventSource.onopen = () => {
         console.log('✅ [SSE] Connection opened');
     };
 
     // Start event
     eventSource.addEventListener('start', (event) => {
-        console.log('📥 [SSE] Received START event:', event.data);  // 🔥 УЛУЧШЕНО
+        console.log('📥 [SSE] Received START event:', event.data);
         startTime = Date.now();
 
         addAssistantMessage();
@@ -274,7 +277,7 @@ function setupSSEEventListeners(eventSource) {
 
     // Think step
     eventSource.addEventListener('think', (event) => {
-        console.log('📥 [SSE] Received THINK event:', event.data);  // 🔥 ДОБАВЛЕНО
+        console.log('📥 [SSE] Received THINK event:', event.data);
         const step = JSON.parse(event.data);
         updateThinkingSteps({
             step_type: 'start',
@@ -284,7 +287,7 @@ function setupSSEEventListeners(eventSource) {
 
     // Act step
     eventSource.addEventListener('act', (event) => {
-        console.log('📥 [SSE] Received ACT event:', event.data);  // 🔥 ДОБАВЛЕНО
+        console.log('📥 [SSE] Received ACT event:', event.data);
         const step = JSON.parse(event.data);
         updateThinkingSteps({
             step_type: 'act',
@@ -294,7 +297,7 @@ function setupSSEEventListeners(eventSource) {
 
     // Observe step
     eventSource.addEventListener('observe', (event) => {
-        console.log('📥 [SSE] Received OBSERVE event:', event.data);  // 🔥 ДОБАВЛЕНО
+        console.log('📥 [SSE] Received OBSERVE event:', event.data);
         const step = JSON.parse(event.data);
         updateThinkingSteps({
             step_type: 'observe',
@@ -304,11 +307,11 @@ function setupSSEEventListeners(eventSource) {
 
     // Done event - final answer
     eventSource.addEventListener('done', (event) => {
-        console.log('📥 [SSE] Received DONE event:', event.data);  // 🔥 ДОБАВЛЕНО
+        console.log('📥 [SSE] Received DONE event:', event.data);
         const step = JSON.parse(event.data);
 
-        console.log('📥 [SSE] DONE content length:', step.content?.length || 0);  // 🔥 ДОБАВЛЕНО
-        console.log('📥 [SSE] DONE content preview:', step.content?.substring(0, 100));  // 🔥 ДОБАВЛЕНО
+        console.log('📥 [SSE] DONE content length:', step.content?.length || 0);
+        console.log('📥 [SSE] DONE content preview:', step.content?.substring(0, 100));
 
         updateThinkingSteps({
             step_type: 'done',
@@ -330,7 +333,7 @@ function setupSSEEventListeners(eventSource) {
         }
 
         // Cleanup
-        console.log('✅ [SSE] Closing connection');  // 🔥 ДОБАВЛЕНО
+        console.log('✅ [SSE] Closing connection');
         eventSource.close();
         currentEventSource = null;
         setInputEnabled(true);
@@ -338,36 +341,34 @@ function setupSSEEventListeners(eventSource) {
 
     // Error event
     eventSource.addEventListener('error', (event) => {
-        console.error('❌ [SSE] Error event:', event);  // 🔥 УЛУЧШЕНО
-        console.error('❌ [SSE] ReadyState:', eventSource.readyState);  // 🔥 ДОБАВЛЕНО
-        console.error('❌ [SSE] ReadyState values: CONNECTING=0, OPEN=1, CLOSED=2');  // 🔥 ДОБАВЛЕНО
+        console.error('❌ [SSE] Error event:', event);
+        console.error('❌ [SSE] ReadyState:', eventSource.readyState);
 
         if (event.data) {
             try {
-                console.error('❌ [SSE] Error data:', event.data);  // 🔥 ДОБАВЛЕНО
+                console.error('❌ [SSE] Error data:', event.data);
                 const errorData = JSON.parse(event.data);
                 showError(errorData.content || 'Произошла ошибка');
             } catch (e) {
-                console.error('❌ [SSE] Failed to parse error data:', e);  // 🔥 ДОБАВЛЕНО
+                console.error('❌ [SSE] Failed to parse error data:', e);
                 showError('Произошла ошибка при обработке запроса');
             }
         } else {
             if (eventSource.readyState === EventSource.CLOSED) {
-                console.log('⚠️  [SSE] Connection closed');  // 🔥 УЛУЧШЕНО
+                console.log('⚠️  [SSE] Connection closed');
             } else {
-                console.error('❌ [SSE] Connection error, state:', eventSource.readyState);  // 🔥 ДОБАВЛЕНО
+                console.error('❌ [SSE] Connection error, state:', eventSource.readyState);
                 showError('Потеряно соединение с сервером');
             }
         }
 
         // Cleanup
-        console.log('🧹 [SSE] Cleaning up connection');  // 🔥 ДОБАВЛЕНО
+        console.log('🧹 [SSE] Cleaning up connection');
         eventSource.close();
         currentEventSource = null;
         setInputEnabled(true);
     });
 
-    // 🔥 ДОБАВЛЕНО: Обработка всех необработанных событий
     eventSource.onmessage = (event) => {
         console.log('📥 [SSE] Received unhandled message event:', event);
     };
@@ -377,7 +378,7 @@ function setupSSEEventListeners(eventSource) {
 // ERROR HANDLING
 // ============================================================================
 function showError(message) {
-    const currentMessage = document.getElementById('currentAssistantMessage');
+    const currentMessage = document.querySelector('.current-message');
 
     if (currentMessage) {
         // Add error to current message thinking steps
