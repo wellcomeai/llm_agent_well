@@ -1,5 +1,5 @@
 """
-Travel Agent with Google ADK and ReAct Pattern - WITH DETAILED LOGGING.
+Travel Agent with OpenAI and ReAct Pattern.
 
 This agent helps users plan trips by:
 1. Getting weather information for destinations
@@ -14,8 +14,7 @@ import json
 import logging
 from datetime import datetime
 from typing import AsyncGenerator, Dict, Any, Optional
-from google import genai
-from google.genai.types import Tool, GenerateContentConfig, Content, Part
+from openai import AsyncOpenAI
 
 # Setup logging
 logging.basicConfig(
@@ -70,23 +69,6 @@ SYSTEM_INSTRUCTIONS = """
    - Включи всю собранную информацию
    - Дай полезные рекомендации
 
-**Пример работы:**
-
-User: "Хочу полететь в Париж на выходные"
-
-THINK: "Мне нужно узнать:
-1. Погоду в Париже (чтобы рекомендовать что взять)
-2. Откуда пользователь хочет лететь (это не указано!)
-План: сначала узнаю погоду, потом спрошу про город вылета"
-
-ACT: Вызываю get_weather("Paris")
-
-OBSERVE: "Погода получена: +15°C, облачно. Хорошая информация.
-Но я не знаю откуда пользователь летит - нужно спросить."
-
-DONE: "В Париже сейчас +15°C, облачно - отличная погода для прогулок!
-Из какого города вы планируете вылет, чтобы я мог найти рейсы?"
-
 **Правила:**
 - НЕ вызывай все функции сразу
 - Делай шаги последовательно
@@ -99,13 +81,13 @@ DONE: "В Париже сейчас +15°C, облачно - отличная п
 
 class TravelAgent:
     """
-    Travel Agent using Google ADK with ReAct pattern.
+    Travel Agent using OpenAI with ReAct pattern.
     """
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-2.0-flash-exp",
+        model_name: str = "gpt-4o-mini",
         temperature: float = 0.7,
         max_tokens: int = 2000
     ):
@@ -113,17 +95,17 @@ class TravelAgent:
         Initialize the Travel Agent.
 
         Args:
-            api_key: Google API key (если None, берется из env GOOGLE_API_KEY)
+            api_key: OpenAI API key (если None, берется из env OPENAI_API_KEY)
             model_name: Model name to use
             temperature: Model temperature (0.0-1.0)
             max_tokens: Maximum tokens in response
         """
-        logger.info("=== Initializing TravelAgent ===")
+        logger.info("=== Initializing TravelAgent (OpenAI) ===")
         
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
-            logger.error("GOOGLE_API_KEY not found in environment")
-            raise ValueError("GOOGLE_API_KEY не найден в environment variables")
+            logger.error("OPENAI_API_KEY not found in environment")
+            raise ValueError("OPENAI_API_KEY не найден в environment variables")
 
         self.model_name = model_name
         self.temperature = temperature
@@ -131,18 +113,19 @@ class TravelAgent:
 
         logger.info(f"Model: {model_name}, Temperature: {temperature}")
 
-        # Initialize Google GenAI client
+        # Initialize OpenAI client
         try:
-            self.client = genai.Client(api_key=self.api_key)
-            logger.info("Google GenAI client initialized successfully")
+            self.client = AsyncOpenAI(api_key=self.api_key)
+            logger.info("OpenAI client initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize Google GenAI client: {e}")
+            logger.error(f"Failed to initialize OpenAI client: {e}")
             raise
 
-        # Define tools for the agent
+        # Define tools for the agent (OpenAI format)
         self.tools = [
-            Tool(function_declarations=[
-                {
+            {
+                "type": "function",
+                "function": {
                     "name": "get_weather",
                     "description": "Получает текущую погоду для указанного города. Возвращает температуру, описание, влажность, ветер.",
                     "parameters": {
@@ -155,8 +138,11 @@ class TravelAgent:
                         },
                         "required": ["city"]
                     }
-                },
-                {
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "search_flights",
                     "description": "Ищет доступные рейсы между двумя городами. Возвращает список рейсов с ценами, временем вылета/прилета, продолжительностью.",
                     "parameters": {
@@ -178,7 +164,7 @@ class TravelAgent:
                         "required": ["from_city", "to_city"]
                     }
                 }
-            ])
+            }
         ]
 
         # Session memory (простая реализация для MVP)
@@ -249,13 +235,15 @@ class TravelAgent:
 
         # Initialize or get session history
         if session_id not in self.sessions:
-            self.sessions[session_id] = []
+            self.sessions[session_id] = [
+                {"role": "system", "content": SYSTEM_INSTRUCTIONS}
+            ]
             logger.info(f"Created new session: {session_id}")
 
         # Add user message to history
         self.sessions[session_id].append({
             "role": "user",
-            "parts": [{"text": user_query}]
+            "content": user_query
         })
 
         try:
@@ -268,15 +256,6 @@ class TravelAgent:
                 "metadata": {"session_id": session_id}
             }
 
-            # Create config with tools
-            config = GenerateContentConfig(
-                temperature=self.temperature,
-                max_output_tokens=self.max_tokens,
-                system_instruction=SYSTEM_INSTRUCTIONS,
-                tools=self.tools  # Tools go INSIDE config!
-            )
-            logger.info("Created GenerateContentConfig with tools")
-
             # Run ReAct loop
             max_iterations = 10
             iteration = 0
@@ -286,81 +265,75 @@ class TravelAgent:
                 logger.info(f"=== ReAct iteration {iteration}/{max_iterations} ===")
 
                 try:
-                    # Generate response
-                    logger.info("Calling Google Gemini API...")
-                    response = self.client.models.generate_content(
+                    # Call OpenAI API
+                    logger.info("Calling OpenAI API...")
+                    response = await self.client.chat.completions.create(
                         model=self.model_name,
-                        contents=self.sessions[session_id],
-                        config=config
-                        # NO 'tools' parameter here - it's in config!
+                        messages=self.sessions[session_id],
+                        tools=self.tools,
+                        tool_choice="auto",
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens
                     )
-                    logger.info("Received response from Gemini API")
+                    logger.info("Received response from OpenAI API")
+
+                    message = response.choices[0].message
+                    
+                    # Add assistant's response to history
+                    self.sessions[session_id].append(message.model_dump())
 
                     # Check if model wants to call a function
-                    if response.candidates[0].content.parts[0].function_call:
-                        function_call = response.candidates[0].content.parts[0].function_call
-                        function_name = function_call.name
-                        function_args = dict(function_call.args)
+                    if message.tool_calls:
+                        logger.info(f"Model requested {len(message.tool_calls)} tool call(s)")
+                        
+                        for tool_call in message.tool_calls:
+                            function_name = tool_call.function.name
+                            function_args = json.loads(tool_call.function.arguments)
 
-                        logger.info(f"Model requested function call: {function_name}")
+                            logger.info(f"Tool call: {function_name}")
 
-                        # Yield ACT step
-                        yield {
-                            "step_type": "act",
-                            "content": f"Вызываю функцию: {function_name}",
-                            "timestamp": datetime.now().isoformat(),
-                            "metadata": {
-                                "tool_name": function_name,
-                                "tool_args": function_args
-                            }
-                        }
-
-                        # Execute function
-                        function_result = self._execute_function(function_name, function_args)
-
-                        # Yield OBSERVE step
-                        yield {
-                            "step_type": "observe",
-                            "content": f"Результат функции {function_name}: {json.dumps(function_result, ensure_ascii=False, indent=2)}",
-                            "timestamp": datetime.now().isoformat(),
-                            "metadata": {
-                                "tool_name": function_name,
-                                "tool_result": function_result
-                            }
-                        }
-
-                        # Add function call to history
-                        self.sessions[session_id].append({
-                            "role": "model",
-                            "parts": [{"function_call": function_call}]
-                        })
-
-                        # Add function response to history
-                        self.sessions[session_id].append({
-                            "role": "user",
-                            "parts": [{
-                                "function_response": {
-                                    "name": function_name,
-                                    "response": function_result
+                            # Yield ACT step
+                            yield {
+                                "step_type": "act",
+                                "content": f"Вызываю функцию: {function_name}",
+                                "timestamp": datetime.now().isoformat(),
+                                "metadata": {
+                                    "tool_name": function_name,
+                                    "tool_args": function_args
                                 }
-                            }]
-                        })
+                            }
+
+                            # Execute function
+                            function_result = self._execute_function(function_name, function_args)
+
+                            # Yield OBSERVE step
+                            yield {
+                                "step_type": "observe",
+                                "content": f"Результат функции {function_name}: {json.dumps(function_result, ensure_ascii=False, indent=2)}",
+                                "timestamp": datetime.now().isoformat(),
+                                "metadata": {
+                                    "tool_name": function_name,
+                                    "tool_result": function_result
+                                }
+                            }
+
+                            # Add function result to history
+                            self.sessions[session_id].append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "name": function_name,
+                                "content": json.dumps(function_result, ensure_ascii=False)
+                            })
 
                     else:
                         # Model has generated final text response
-                        final_text = response.candidates[0].content.parts[0].text
-                        logger.info(f"Model generated final response (length: {len(final_text)})")
-
-                        # Add to history
-                        self.sessions[session_id].append({
-                            "role": "model",
-                            "parts": [{"text": final_text}]
-                        })
+                        final_text = message.content
+                        logger.info(f"Model generated final response (length: {len(final_text) if final_text else 0})")
 
                         # Yield DONE step
                         yield {
                             "step_type": "done",
-                            "content": final_text,
+                            "content": final_text or "Ответ получен",
                             "timestamp": datetime.now().isoformat(),
                             "metadata": {
                                 "iterations": iteration,
