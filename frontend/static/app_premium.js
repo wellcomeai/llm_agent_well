@@ -101,6 +101,12 @@ function sendMessage() {
 // MESSAGE COMPONENTS
 // ============================================================================
 function addUserMessage(text) {
+    // Hide welcome screen on first message
+    const welcomeScreen = document.getElementById('welcomeScreen');
+    if (welcomeScreen && !welcomeScreen.classList.contains('hidden')) {
+        welcomeScreen.classList.add('hidden');
+    }
+
     const chatContainer = document.getElementById('chatContainer');
 
     const messageEl = document.createElement('div');
