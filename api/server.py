@@ -126,6 +126,7 @@ async def health_check():
     return JSONResponse({
         "status": "healthy",
         "version": "1.0.0",
+        "framework": "LangChain",
         "timestamp": datetime.now().isoformat(),
         "agent_status": agent_status,
         "environment": {
@@ -264,12 +265,13 @@ async def startup_event():
     print(f"  - Model: {os.getenv('MODEL_NAME', 'gpt-4o-mini')}")
     print(f"  - Temperature: {os.getenv('TEMPERATURE', '0.7')}")
     print(f"  - Debug: {os.getenv('DEBUG', 'false')}")
+    print(f"  - Framework: LangChain")
     print("=" * 60)
 
     # Pre-initialize agent to catch errors early
     try:
         get_agent()
-        print("✓ Agent initialized successfully")
+        print("✓ Agent initialized successfully (LangChain)")
     except Exception as e:
         print(f"✗ Agent initialization failed: {e}")
         print("  Make sure OPENAI_API_KEY is set in .env file")

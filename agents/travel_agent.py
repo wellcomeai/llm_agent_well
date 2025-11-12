@@ -1,20 +1,27 @@
 """
-Travel Agent with OpenAI and ReAct Pattern.
+Travel Agent with LangChain and ReAct Pattern.
 
 This agent helps users plan trips by:
 1. Getting weather information for destinations
 2. Searching for flights
 3. Providing travel recommendations
 
-Uses ReAct pattern: Think → Act → Observe → Repeat
+Uses LangChain's built-in ReAct agent with streaming callbacks.
 """
 
 import os
-import json
 import logging
+import asyncio
+import json
 from datetime import datetime
 from typing import AsyncGenerator, Dict, Any, Optional
-from openai import AsyncOpenAI
+
+from langchain.agents import create_react_agent, AgentExecutor
+from langchain_openai import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.memory import ConversationSummaryBufferMemory
+from langchain.callbacks.base import AsyncCallbackHandler
+from dotenv import load_dotenv
 
 # Setup logging
 logging.basicConfig(
@@ -23,16 +30,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Import our custom functions
+# Import our custom tools
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from functions.weather import get_weather
-from functions.flights import search_flights
+from functions.weather import get_weather_tool
+from functions.flights import search_flights_tool
+
+load_dotenv()
 
 
-# System instructions with explicit ReAct pattern
-SYSTEM_INSTRUCTIONS = """
-Ты - профессиональный помощник по планированию путешествий (Travel Agent).
+# ============================================================================
+# REACT PROMPT TEMPLATE
+# ============================================================================
+
+REACT_PROMPT = """Ты - профессиональный помощник по планированию путешествий (Travel Agent).
 
 Твоя роль:
 - Помогать пользователям планировать поездки
@@ -48,11 +59,10 @@ SYSTEM_INSTRUCTIONS = """
    - Проанализируй запрос пользователя
    - Определи, какую информацию нужно собрать
    - Составь пошаговый план действий
-   - НЕ делай все действия сразу!
 
 2. ACT (Действие):
    - Выполни ОДНО действие из плана
-   - Вызови соответствующий инструмент (get_weather или search_flights)
+   - Вызови соответствующий инструмент
    - Подожди результата
 
 3. OBSERVE (Наблюдение):
@@ -61,27 +71,157 @@ SYSTEM_INSTRUCTIONS = """
    - Реши, нужны ли дополнительные действия
 
 4. REPEAT (Повтор):
-   - Если нужно больше информации - вернись к шагу THINK
-   - Если информации достаточно - переходи к DONE
-
-5. DONE (Завершение):
-   - Сформулируй итоговый ответ пользователю
-   - Включи всю собранную информацию
-   - Дай полезные рекомендации
+   - Если нужно больше информации - повтори цикл
+   - Если информации достаточно - переходи к финальному ответу
 
 **Правила:**
-- НЕ вызывай все функции сразу
-- Делай шаги последовательно
+- Делай шаги последовательно, НЕ вызывай все функции сразу
 - Если информации недостаточно - спрашивай у пользователя
 - Всегда объясняй свои рассуждения
 - Будь дружелюбным и полезным
 - Отвечай на русском языке (но города называй по-английски для API)
-"""
+- Давай конкретные рекомендации на основе полученных данных
 
+Доступные инструменты:
+{tools}
+
+Используй следующий формат:
+
+Thought: [твои размышления о том, что нужно сделать]
+Action: [название инструмента из списка выше]
+Action Input: [входные данные для инструмента в формате JSON]
+Observation: [результат выполнения инструмента]
+... (повторяй Thought/Action/Action Input/Observation сколько нужно)
+Thought: Теперь у меня есть вся необходимая информация для ответа
+Final Answer: [подробный и полезный ответ пользователю на русском языке]
+
+Начинай!
+
+{agent_scratchpad}"""
+
+
+# ============================================================================
+# STREAMING CALLBACK FOR SSE
+# ============================================================================
+
+class TravelAgentStreamingCallback(AsyncCallbackHandler):
+    """
+    Async callback handler для streaming шагов агента в SSE формате.
+
+    Генерирует события:
+    - act: когда агент вызывает инструмент
+    - observe: когда инструмент возвращает результат
+    - done: когда агент завершил работу
+    - error: при ошибках
+    """
+
+    def __init__(self, queue: asyncio.Queue):
+        """
+        Args:
+            queue: Asyncio Queue для передачи событий
+        """
+        self.queue = queue
+        logger.info("TravelAgentStreamingCallback initialized")
+
+    async def on_agent_action(self, action, **kwargs):
+        """
+        Вызывается когда агент решает вызвать инструмент.
+
+        Args:
+            action: AgentAction объект с информацией о вызове
+        """
+        logger.info(f"Agent action: {action.tool}")
+
+        await self.queue.put({
+            "step_type": "act",
+            "content": f"Вызываю функцию: {action.tool}",
+            "timestamp": datetime.now().isoformat(),
+            "metadata": {
+                "tool_name": action.tool,
+                "tool_input": action.tool_input
+            }
+        })
+
+    async def on_tool_end(self, output: str, **kwargs):
+        """
+        Вызывается когда инструмент возвращает результат.
+
+        Args:
+            output: Результат выполнения инструмента (JSON строка)
+        """
+        logger.info("Tool execution completed")
+
+        # Парсим JSON результат для metadata
+        try:
+            result_dict = json.loads(output)
+            success = result_dict.get("success", True)
+
+            if success:
+                content = "Результат получен успешно"
+            else:
+                content = f"Получена ошибка: {result_dict.get('error', 'Unknown')}"
+        except json.JSONDecodeError:
+            result_dict = {"raw_output": output}
+            content = "Результат получен"
+
+        await self.queue.put({
+            "step_type": "observe",
+            "content": content,
+            "timestamp": datetime.now().isoformat(),
+            "metadata": {"tool_result": result_dict}
+        })
+
+    async def on_agent_finish(self, finish, **kwargs):
+        """
+        Вызывается когда агент закончил работу и готов дать финальный ответ.
+
+        Args:
+            finish: AgentFinish объект с финальным ответом
+        """
+        logger.info("Agent finished successfully")
+
+        final_output = finish.return_values.get("output", "Ответ получен")
+
+        await self.queue.put({
+            "step_type": "done",
+            "content": final_output,
+            "timestamp": datetime.now().isoformat(),
+            "metadata": {"completed": True}
+        })
+
+    async def on_chain_error(self, error: Exception, **kwargs):
+        """
+        Вызывается при ошибке в chain/agent.
+
+        Args:
+            error: Exception объект
+        """
+        logger.error(f"Chain error: {error}", exc_info=True)
+
+        await self.queue.put({
+            "step_type": "error",
+            "content": f"Ошибка: {str(error)}",
+            "timestamp": datetime.now().isoformat(),
+            "metadata": {
+                "error_type": type(error).__name__,
+                "error_message": str(error)
+            }
+        })
+
+
+# ============================================================================
+# TRAVEL AGENT CLASS
+# ============================================================================
 
 class TravelAgent:
     """
-    Travel Agent using OpenAI with ReAct pattern.
+    Travel Agent using LangChain with ReAct pattern.
+
+    Features:
+    - Built-in ReAct agent with create_react_agent()
+    - ConversationSummaryBufferMemory for session management
+    - Async streaming callbacks for SSE
+    - Proper error handling
     """
 
     def __init__(
@@ -100,8 +240,8 @@ class TravelAgent:
             temperature: Model temperature (0.0-1.0)
             max_tokens: Maximum tokens in response
         """
-        logger.info("=== Initializing TravelAgent (OpenAI) ===")
-        
+        logger.info("=== Initializing TravelAgent (LangChain) ===")
+
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             logger.error("OPENAI_API_KEY not found in environment")
@@ -113,99 +253,77 @@ class TravelAgent:
 
         logger.info(f"Model: {model_name}, Temperature: {temperature}")
 
-        # Initialize OpenAI client
+        # Initialize LLM
         try:
-            self.client = AsyncOpenAI(api_key=self.api_key)
-            logger.info("OpenAI client initialized successfully")
+            self.llm = ChatOpenAI(
+                model=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                streaming=True,  # Enable streaming
+                api_key=self.api_key
+            )
+            logger.info("ChatOpenAI initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize OpenAI client: {e}")
+            logger.error(f"Failed to initialize ChatOpenAI: {e}")
             raise
 
-        # Define tools for the agent (OpenAI format)
-        self.tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Получает текущую погоду для указанного города. Возвращает температуру, описание, влажность, ветер.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "city": {
-                                "type": "string",
-                                "description": "Название города на английском (например: Paris, London, Amsterdam)"
-                            }
-                        },
-                        "required": ["city"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_flights",
-                    "description": "Ищет доступные рейсы между двумя городами. Возвращает список рейсов с ценами, временем вылета/прилета, продолжительностью.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "from_city": {
-                                "type": "string",
-                                "description": "Город вылета на английском (например: Amsterdam, London)"
-                            },
-                            "to_city": {
-                                "type": "string",
-                                "description": "Город прилета на английском (например: Paris, Berlin)"
-                            },
-                            "date": {
-                                "type": "string",
-                                "description": "Дата вылета в формате YYYY-MM-DD. Необязательный параметр, по умолчанию завтра."
-                            }
-                        },
-                        "required": ["from_city", "to_city"]
-                    }
-                }
-            }
-        ]
+        # Define tools
+        self.tools = [get_weather_tool, search_flights_tool]
+        logger.info(f"Tools loaded: {[tool.name for tool in self.tools]}")
 
-        # Session memory (простая реализация для MVP)
-        self.sessions: Dict[str, list] = {}
-        
+        # Create prompt template
+        self.prompt = ChatPromptTemplate.from_messages([
+            ("system", REACT_PROMPT),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            ("human", "{input}"),
+            ("ai", "{agent_scratchpad}")
+        ])
+        logger.info("Prompt template created")
+
+        # Create ReAct agent
+        try:
+            self.agent = create_react_agent(
+                llm=self.llm,
+                tools=self.tools,
+                prompt=self.prompt
+            )
+            logger.info("ReAct agent created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create ReAct agent: {e}")
+            raise
+
+        # Session memories storage
+        self.memories: Dict[str, ConversationSummaryBufferMemory] = {}
         logger.info("TravelAgent initialization complete")
 
-    def _execute_function(self, function_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def _get_memory(self, session_id: str) -> ConversationSummaryBufferMemory:
         """
-        Execute a function call.
+        Get or create memory for a session.
+
+        Uses ConversationSummaryBufferMemory which:
+        - Keeps recent messages in buffer
+        - Summarizes older messages to save tokens
+        - Balances context and token usage
 
         Args:
-            function_name: Name of the function to call
-            arguments: Function arguments
+            session_id: Session identifier
 
         Returns:
-            Function result
+            ConversationSummaryBufferMemory instance
         """
-        logger.info(f"Executing function: {function_name} with args: {arguments}")
-        
-        try:
-            if function_name == "get_weather":
-                result = get_weather(**arguments)
-                logger.info(f"get_weather result: {result.get('success', False)}")
-                return result
-            elif function_name == "search_flights":
-                result = search_flights(**arguments)
-                logger.info(f"search_flights result: {result.get('success', False)}")
-                return result
-            else:
-                logger.error(f"Unknown function: {function_name}")
-                return {
-                    "success": False,
-                    "error": f"Unknown function: {function_name}"
-                }
-        except Exception as e:
-            logger.error(f"Error executing {function_name}: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": f"Error in {function_name}: {str(e)}"
-            }
+        if session_id not in self.memories:
+            logger.info(f"Creating new memory for session: {session_id}")
+
+            self.memories[session_id] = ConversationSummaryBufferMemory(
+                llm=self.llm,
+                max_token_limit=1000,  # Summarize when exceeds
+                memory_key="chat_history",
+                return_messages=True,
+                input_key="input",
+                output_key="output"
+            )
+
+        return self.memories[session_id]
 
     async def run(
         self,
@@ -222,152 +340,80 @@ class TravelAgent:
         Yields:
             Step dictionaries with ReAct loop progress:
             {
-                "step_type": "think" | "act" | "observe" | "done" | "error",
+                "step_type": "start" | "act" | "observe" | "done" | "error",
                 "content": "step content",
                 "timestamp": "ISO timestamp",
                 "metadata": {...}
             }
         """
         session_id = session_id or f"session_{datetime.now().timestamp()}"
-        
+
         logger.info(f"=== Starting agent run for session: {session_id} ===")
         logger.info(f"User query: {user_query}")
 
-        # Initialize or get session history
-        if session_id not in self.sessions:
-            self.sessions[session_id] = [
-                {"role": "system", "content": SYSTEM_INSTRUCTIONS}
-            ]
-            logger.info(f"Created new session: {session_id}")
+        # Yield start event
+        logger.info("Yielding START event")
+        yield {
+            "step_type": "start",
+            "content": f"Обрабатываю запрос: {user_query}",
+            "timestamp": datetime.now().isoformat(),
+            "metadata": {"session_id": session_id}
+        }
 
-        # Add user message to history
-        self.sessions[session_id].append({
-            "role": "user",
-            "content": user_query
-        })
+        # Setup streaming
+        queue = asyncio.Queue()
+        callback = TravelAgentStreamingCallback(queue)
 
-        try:
-            # Yield start event
-            logger.info("Yielding START event")
-            yield {
-                "step_type": "start",
-                "content": f"Обрабатываю запрос: {user_query}",
-                "timestamp": datetime.now().isoformat(),
-                "metadata": {"session_id": session_id}
-            }
+        # Get memory for session
+        memory = self._get_memory(session_id)
 
-            # Run ReAct loop
-            max_iterations = 10
-            iteration = 0
+        # Create agent executor
+        executor = AgentExecutor(
+            agent=self.agent,
+            tools=self.tools,
+            memory=memory,
+            verbose=True,
+            handle_parsing_errors=True,
+            max_iterations=10,
+            return_intermediate_steps=True
+        )
 
-            while iteration < max_iterations:
-                iteration += 1
-                logger.info(f"=== ReAct iteration {iteration}/{max_iterations} ===")
+        logger.info("AgentExecutor created, starting execution...")
 
-                try:
-                    # Call OpenAI API
-                    logger.info("Calling OpenAI API...")
-                    response = await self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=self.sessions[session_id],
-                        tools=self.tools,
-                        tool_choice="auto",
-                        temperature=self.temperature,
-                        max_tokens=self.max_tokens
-                    )
-                    logger.info("Received response from OpenAI API")
+        # Run agent in background task
+        task = asyncio.create_task(
+            executor.ainvoke(
+                {"input": user_query},
+                config={"callbacks": [callback]}
+            )
+        )
 
-                    message = response.choices[0].message
-                    
-                    # Add assistant's response to history
-                    self.sessions[session_id].append(message.model_dump())
-
-                    # Check if model wants to call a function
-                    if message.tool_calls:
-                        logger.info(f"Model requested {len(message.tool_calls)} tool call(s)")
-                        
-                        for tool_call in message.tool_calls:
-                            function_name = tool_call.function.name
-                            function_args = json.loads(tool_call.function.arguments)
-
-                            logger.info(f"Tool call: {function_name}")
-
-                            # Yield ACT step
-                            yield {
-                                "step_type": "act",
-                                "content": f"Вызываю функцию: {function_name}",
-                                "timestamp": datetime.now().isoformat(),
-                                "metadata": {
-                                    "tool_name": function_name,
-                                    "tool_args": function_args
-                                }
-                            }
-
-                            # Execute function
-                            function_result = self._execute_function(function_name, function_args)
-
-                            # Yield OBSERVE step
-                            yield {
-                                "step_type": "observe",
-                                "content": f"Результат функции {function_name}: {json.dumps(function_result, ensure_ascii=False, indent=2)}",
-                                "timestamp": datetime.now().isoformat(),
-                                "metadata": {
-                                    "tool_name": function_name,
-                                    "tool_result": function_result
-                                }
-                            }
-
-                            # Add function result to history
-                            self.sessions[session_id].append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "name": function_name,
-                                "content": json.dumps(function_result, ensure_ascii=False)
-                            })
-
-                    else:
-                        # Model has generated final text response
-                        final_text = message.content
-                        logger.info(f"Model generated final response (length: {len(final_text) if final_text else 0})")
-
-                        # Yield DONE step
-                        yield {
-                            "step_type": "done",
-                            "content": final_text or "Ответ получен",
-                            "timestamp": datetime.now().isoformat(),
-                            "metadata": {
-                                "iterations": iteration,
-                                "session_id": session_id
-                            }
-                        }
-
-                        logger.info("Agent completed successfully")
-                        break
-
-                except Exception as e:
-                    logger.error(f"Error in ReAct iteration {iteration}: {e}", exc_info=True)
-                    yield {
-                        "step_type": "error",
-                        "content": f"Ошибка в итерации {iteration}: {str(e)}",
-                        "timestamp": datetime.now().isoformat(),
-                        "metadata": {
-                            "error_type": type(e).__name__,
-                            "iteration": iteration
-                        }
-                    }
-                    break
-
-            if iteration >= max_iterations:
-                logger.warning("Reached max iterations")
+        # Stream events from queue
+        while not task.done() or not queue.empty():
+            try:
+                # Wait for event with timeout
+                step = await asyncio.wait_for(queue.get(), timeout=0.1)
+                logger.debug(f"Yielding step: {step['step_type']}")
+                yield step
+            except asyncio.TimeoutError:
+                # No event yet, continue waiting
+                continue
+            except Exception as e:
+                logger.error(f"Error in streaming loop: {e}", exc_info=True)
                 yield {
                     "step_type": "error",
-                    "content": "Достигнут лимит итераций ReAct loop",
+                    "content": f"Ошибка streaming: {str(e)}",
                     "timestamp": datetime.now().isoformat(),
-                    "metadata": {"max_iterations": max_iterations}
+                    "metadata": {"error_type": type(e).__name__}
                 }
+                break
 
+        # Check if task completed successfully
+        try:
+            result = await task
+            logger.info(f"Agent execution completed successfully")
         except Exception as e:
-            logger.error(f"Fatal error in agent.run(): {e}", exc_info=True)
+            logger.error(f"Agent execution failed: {e}", exc_info=True)
             yield {
                 "step_type": "error",
                 "content": f"Ошибка при обработке запроса: {str(e)}",
@@ -376,6 +422,10 @@ class TravelAgent:
             }
 
 
+# ============================================================================
+# MAIN (для тестирования)
+# ============================================================================
+
 if __name__ == "__main__":
     import asyncio
 
@@ -383,7 +433,7 @@ if __name__ == "__main__":
         """Test the agent"""
         agent = TravelAgent()
 
-        print("Testing Travel Agent with ReAct pattern...\n")
+        print("Testing Travel Agent with LangChain ReAct pattern...\n")
 
         # Test query
         query = "Какая погода в Париже?"

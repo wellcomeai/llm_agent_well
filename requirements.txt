@@ -1,5 +1,8 @@
-# Google ADK Framework
-google-adk>=0.1.0
+# LangChain Core
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-community>=0.0.20
+langchain-core>=0.1.0
 
 # Web Framework
 fastapi>=0.104.0
