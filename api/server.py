@@ -1,5 +1,5 @@
 """
-FastAPI server with SSE streaming for Travel Agent.
+FastAPI server with SSE streaming for Travel Agent V2 (Plan-and-Execute).
 
 Endpoints:
 - GET /               - Serve frontend HTML
@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -33,12 +33,12 @@ load_dotenv()
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Travel Agent MVP API",
-    description="Travel planning agent with ReAct pattern and OpenAI",
-    version="1.0.0"
+    title="Travel Agent V2 API",
+    description="Travel planning agent with Plan-and-Execute architecture",
+    version="2.0.0"
 )
 
-# CORS middleware (если нужно для кросс-доменных запросов)
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # В production ограничить конкретными доменами
@@ -52,7 +52,7 @@ STATIC_DIR = Path(__file__).parent.parent / "frontend" / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# Initialize agent (singleton для MVP)
+# Initialize agent (singleton)
 agent = None
 
 
@@ -86,8 +86,8 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     """Response model for /api/query endpoint"""
     session_id: str
-    steps: list
-    total_steps: int
+    events: list
+    total_events: int
     timestamp: str
 
 
@@ -97,9 +97,7 @@ class QueryResponse(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_frontend():
-    """
-    Serve the frontend HTML page.
-    """
+    """Serve the frontend HTML page."""
     html_path = Path(__file__).parent.parent / "frontend" / "index.html"
 
     if not html_path.exists():
@@ -113,11 +111,8 @@ async def serve_frontend():
 
 @app.get("/health")
 async def health_check():
-    """
-    Health check endpoint (для мониторинга, Render, etc.)
-    """
+    """Health check endpoint"""
     try:
-        # Проверяем, что агент может быть инициализирован
         get_agent()
         agent_status = "healthy"
     except Exception as e:
@@ -125,7 +120,8 @@ async def health_check():
 
     return JSONResponse({
         "status": "healthy",
-        "version": "1.0.0",
+        "version": "2.0.0",
+        "architecture": "plan-and-execute",
         "timestamp": datetime.now().isoformat(),
         "agent_status": agent_status,
         "environment": {
@@ -148,10 +144,18 @@ async def stream_agent_response(
         q: User query
         session_id: Optional session ID for conversation memory
 
-    SSE Events:
-        - start: Agent started processing
-        - step: Each ReAct step (think/act/observe)
-        - done: Final answer
+    SSE Events (Plan-and-Execute V2):
+        - start: Agent started
+        - routing_start/routing_complete: Query routing
+        - simple_answer: Direct answer for simple queries
+        - planning_start/plan_created: Plan creation
+        - execution_start: Plan execution started
+        - step_started/step_completed/step_failed: Individual step events
+        - reflection_start/reflection_complete: Result reflection
+        - final_answer: Final answer
+        - needs_user_input: Needs user information
+        - replan: Creating new plan
+        - done: Processing complete
         - error: Error occurred
     """
     if not q or q.strip() == "":
@@ -162,43 +166,34 @@ async def stream_agent_response(
         try:
             agent_instance = get_agent()
 
-            # Send initial event
-            yield {
-                "event": "start",
-                "data": json.dumps({
-                    "message": "Agent started processing",
-                    "query": q,
-                    "timestamp": datetime.now().isoformat()
-                }, ensure_ascii=False)
-            }
-
-            # Stream agent steps
-            async for step in agent_instance.run(q, session_id):
+            # Stream agent events (using process_query method for V2)
+            async for event in agent_instance.process_query(q, session_id):
                 # Check if client disconnected
                 if await request.is_disconnected():
                     print(f"Client disconnected for session {session_id}")
                     break
 
-                # Send step event
-                event_type = step["step_type"]
+                # Get event type and data
+                event_type = event.get("event", "unknown")
+                event_data = event.get("data", {})
 
+                # Send SSE event
                 yield {
                     "event": event_type,
-                    "data": json.dumps(step, ensure_ascii=False)
+                    "data": json.dumps(event_data, ensure_ascii=False)
                 }
 
                 # Small delay to prevent overwhelming the client
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.05)
 
         except Exception as e:
             # Send error event
             yield {
                 "event": "error",
                 "data": json.dumps({
-                    "step_type": "error",
-                    "content": f"Server error: {str(e)}",
-                    "timestamp": datetime.now().isoformat(),
-                    "metadata": {"error_type": type(e).__name__}
+                    "error": str(e),
+                    "type": type(e).__name__,
+                    "timestamp": datetime.now().isoformat()
                 }, ensure_ascii=False)
             }
 
@@ -209,7 +204,7 @@ async def stream_agent_response(
 async def query_agent(request: QueryRequest):
     """
     Non-streaming endpoint for testing purposes.
-    Returns all steps at once after completion.
+    Returns all events at once after completion.
 
     Request body:
         {
@@ -220,25 +215,25 @@ async def query_agent(request: QueryRequest):
     Response:
         {
             "session_id": "session-id",
-            "steps": [...],
-            "total_steps": 5,
+            "events": [...],
+            "total_events": 10,
             "timestamp": "2025-01-15T10:30:00Z"
         }
     """
     try:
         agent_instance = get_agent()
 
-        # Collect all steps
-        steps = []
+        # Collect all events
+        events = []
         session_id = request.session_id or f"session_{datetime.now().timestamp()}"
 
-        async for step in agent_instance.run(request.query, session_id):
-            steps.append(step)
+        async for event in agent_instance.process_query(request.query, session_id):
+            events.append(event)
 
         return QueryResponse(
             session_id=session_id,
-            steps=steps,
-            total_steps=len(steps),
+            events=events,
+            total_events=len(events),
             timestamp=datetime.now().isoformat()
         )
 
@@ -257,19 +252,20 @@ async def query_agent(request: QueryRequest):
 async def startup_event():
     """Initialize on startup"""
     print("=" * 60)
-    print("🧳 Travel Agent MVP API Starting...")
+    print("🧳 Travel Agent V2 API Starting (Plan-and-Execute)...")
     print("=" * 60)
     print(f"Environment:")
     print(f"  - OpenAI API Key: {'✓ Set' if os.getenv('OPENAI_API_KEY') else '✗ Not set'}")
     print(f"  - Model: {os.getenv('MODEL_NAME', 'gpt-4o-mini')}")
     print(f"  - Temperature: {os.getenv('TEMPERATURE', '0.7')}")
+    print(f"  - Architecture: Plan-and-Execute")
     print(f"  - Debug: {os.getenv('DEBUG', 'false')}")
     print("=" * 60)
 
     # Pre-initialize agent to catch errors early
     try:
         get_agent()
-        print("✓ Agent initialized successfully")
+        print("✓ Agent initialized successfully (Plan-and-Execute)")
     except Exception as e:
         print(f"✗ Agent initialization failed: {e}")
         print("  Make sure OPENAI_API_KEY is set in .env file")
@@ -283,11 +279,14 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
+    global agent
     print("\nShutting down Travel Agent API...")
+    if agent:
+        agent.shutdown()
 
 
 # ============================================================================
-# MAIN (для локального запуска через python api/server.py)
+# MAIN
 # ============================================================================
 
 if __name__ == "__main__":
