@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Version Check - Travel Agent</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        .check-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 20px 0;
+        }
+        .check-button:hover {
+            opacity: 0.9;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔍 Travel Agent - Version Check</h1>
+
+        <p>Эта страница проверяет, загружена ли правильная версия JavaScript файлов.</p>
+
+        <button class="check-button" onclick="checkVersion()">🚀 Проверить версию</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        function checkVersion() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="result info">Проверка...</div>';
+
+            const checks = [];
+
+            // Check 1: Функция showFinalResponse существует?
+            const hasShowFinalResponse = typeof showFinalResponse === 'function';
+            checks.push({
+                name: 'Функция showFinalResponse',
+                status: hasShowFinalResponse ? '✅ Найдена' : '❌ Не найдена',
+                expected: '✅ Найдена (это правильная версия)',
+                ok: hasShowFinalResponse
+            });
+
+            // Check 2: Элемент assistantText можно создать?
+            const testDiv = document.createElement('div');
+            testDiv.id = 'testAssistantText';
+            testDiv.innerHTML = '<div id="assistantText">Test</div>';
+            document.body.appendChild(testDiv);
+            const hasAssistantText = document.getElementById('assistantText') !== null;
+            document.body.removeChild(testDiv);
+
+            checks.push({
+                name: 'Элемент assistantText',
+                status: hasAssistantText ? '✅ Может быть создан' : '❌ Проблема',
+                expected: '✅ Может быть создан',
+                ok: hasAssistantText
+            });
+
+            // Check 3: Версия из URL
+            const scripts = Array.from(document.scripts);
+            const appJsScript = scripts.find(s => s.src.includes('app.js'));
+            const hasVersion = appJsScript && appJsScript.src.includes('?v=');
+            const version = hasVersion ? appJsScript.src.split('?v=')[1] : 'Не найдена';
+
+            checks.push({
+                name: 'Версионирование в URL',
+                status: hasVersion ? `✅ ${version}` : '❌ Нет версии',
+                expected: '✅ v=20251112-fix или новее',
+                ok: hasVersion && version.includes('20251112')
+            });
+
+            // Check 4: Функции логирования существуют?
+            const jsContent = appJsScript ? appJsScript.src : '';
+            checks.push({
+                name: 'URL app.js',
+                status: jsContent,
+                expected: '/static/app.js?v=20251112-fix',
+                ok: jsContent.includes('20251112-fix')
+            });
+
+            // Формируем результат
+            let html = '<div class="result ' + (checks.every(c => c.ok) ? 'success' : 'error') + '">';
+            html += '<h3>' + (checks.every(c => c.ok) ? '✅ ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ!' : '⚠️ НАЙДЕНЫ ПРОБЛЕМЫ') + '</h3>';
+            html += '<hr>';
+
+            checks.forEach(check => {
+                html += `
+                    <div style="margin: 15px 0;">
+                        <strong>${check.name}:</strong><br>
+                        Статус: ${check.status}<br>
+                        Ожидается: ${check.expected}
+                    </div>
+                `;
+            });
+
+            html += '<hr>';
+            html += '<h4>📊 Итоговая диагностика:</h4>';
+
+            if (checks.every(c => c.ok)) {
+                html += '<p style="color: green; font-weight: bold;">✅ НОВАЯ ВЕРСИЯ - Все ОК!</p>';
+                html += '<p>Кеш успешно обновлен. Финальные ответы должны отображаться.</p>';
+            } else {
+                html += '<p style="color: red; font-weight: bold;">❌ СТАРАЯ ВЕРСИЯ - Нужен redeploy!</p>';
+                html += '<p>Необходимо:</p>';
+                html += '<ol>';
+                html += '<li>Зайти в Render Dashboard</li>';
+                html += '<li>Manual Deploy → Clear build cache & deploy</li>';
+                html += '<li>После деплоя: Ctrl+Shift+R для hard refresh</li>';
+                html += '</ol>';
+            }
+
+            html += '</div>';
+            resultDiv.innerHTML = html;
+        }
+
+        // Автоматически запускаем проверку при загрузке
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(checkVersion, 500);
+        });
+    </script>
+</body>
+</html>

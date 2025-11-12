@@ -111,6 +111,22 @@ async def serve_frontend():
     return HTMLResponse(content=html_content)
 
 
+@app.get("/CHECK_VERSION.html", response_class=HTMLResponse)
+async def serve_version_check():
+    """
+    Serve version check page.
+    """
+    html_path = Path(__file__).parent.parent / "frontend" / "CHECK_VERSION.html"
+
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="Version check page not found")
+
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    return HTMLResponse(content=html_content)
+
+
 @app.get("/health")
 async def health_check():
     """
