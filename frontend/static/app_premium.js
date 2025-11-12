@@ -340,6 +340,136 @@ function updateStepStatus(stepId, status, data = null) {
 }
 
 // ============================================================================
+// REACT SECTION - Внутри Thinking Block (NEW)
+// ============================================================================
+let currentReActSection = null;
+let reactStepCounter = 0;
+
+function createReActSection() {
+    if (!currentThinkingBlock) return;
+
+    const thinkingContent = currentThinkingBlock.querySelector('.thinking-content');
+
+    const reactEl = document.createElement('div');
+    reactEl.className = 'react-section';
+    reactEl.innerHTML = `
+        <div class="react-section-title">
+            <svg viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span>ReAct Loop: Reasoning + Acting</span>
+        </div>
+        <div class="react-steps"></div>
+    `;
+
+    thinkingContent.appendChild(reactEl);
+    currentReActSection = reactEl;
+    reactStepCounter = 0;
+    scrollToBottom();
+
+    return reactEl;
+}
+
+function addReActThought(stepNum, thought) {
+    if (!currentReActSection) {
+        createReActSection();
+    }
+
+    const stepsContainer = currentReActSection.querySelector('.react-steps');
+
+    // Создаем или находим контейнер для текущего шага
+    let stepContainer = stepsContainer.querySelector(`.react-step-container[data-step="${stepNum}"]`);
+    if (!stepContainer) {
+        stepContainer = document.createElement('div');
+        stepContainer.className = 'react-step-container';
+        stepContainer.setAttribute('data-step', stepNum);
+        stepContainer.innerHTML = `
+            <div class="react-step-number">Шаг ${stepNum}</div>
+        `;
+        stepsContainer.appendChild(stepContainer);
+        reactStepCounter++;
+        updateThinkingMeta(reactStepCounter);
+    }
+
+    const thoughtEl = document.createElement('div');
+    thoughtEl.className = 'react-thought';
+    thoughtEl.innerHTML = `
+        <div class="react-step-icon">💭</div>
+        <div class="react-step-content">
+            <div class="react-step-label">Thought:</div>
+            <div class="react-step-text">${escapeHtml(thought)}</div>
+        </div>
+    `;
+
+    stepContainer.appendChild(thoughtEl);
+    scrollToBottom();
+}
+
+function addReActAction(stepNum, tool, toolInput) {
+    if (!currentReActSection) return;
+
+    const stepsContainer = currentReActSection.querySelector('.react-steps');
+    let stepContainer = stepsContainer.querySelector(`.react-step-container[data-step="${stepNum}"]`);
+    if (!stepContainer) return;
+
+    const actionEl = document.createElement('div');
+    actionEl.className = 'react-action';
+
+    let inputDisplay = '';
+    if (typeof toolInput === 'object') {
+        inputDisplay = JSON.stringify(toolInput, null, 2);
+    } else {
+        inputDisplay = toolInput;
+    }
+
+    actionEl.innerHTML = `
+        <div class="react-step-icon">🔧</div>
+        <div class="react-step-content">
+            <div class="react-step-label">Action:</div>
+            <div class="react-step-text">
+                <strong>${escapeHtml(tool)}</strong>
+                <pre class="react-code">${escapeHtml(inputDisplay)}</pre>
+            </div>
+        </div>
+    `;
+
+    stepContainer.appendChild(actionEl);
+    scrollToBottom();
+}
+
+function addReActObservation(stepNum, result) {
+    if (!currentReActSection) return;
+
+    const stepsContainer = currentReActSection.querySelector('.react-steps');
+    let stepContainer = stepsContainer.querySelector(`.react-step-container[data-step="${stepNum}"]`);
+    if (!stepContainer) return;
+
+    const observationEl = document.createElement('div');
+    observationEl.className = 'react-observation';
+
+    let resultDisplay = '';
+    if (typeof result === 'object') {
+        resultDisplay = JSON.stringify(result, null, 2);
+    } else {
+        resultDisplay = String(result);
+    }
+
+    observationEl.innerHTML = `
+        <div class="react-step-icon">👀</div>
+        <div class="react-step-content">
+            <div class="react-step-label">Observation:</div>
+            <div class="react-step-text">
+                <pre class="react-result">${escapeHtml(resultDisplay)}</pre>
+            </div>
+        </div>
+    `;
+
+    stepContainer.appendChild(observationEl);
+    scrollToBottom();
+}
+
+// ============================================================================
 // FINAL ANSWER
 // ============================================================================
 function addFinalAnswer(text) {
@@ -405,7 +535,19 @@ function setupSSEListeners(eventSource) {
     eventSource.addEventListener('routing_complete', (event) => {
         const data = JSON.parse(event.data);
         const confidence = (data.confidence * 100).toFixed(0);
-        addThinkingStep('routing', `Маршрут: ${data.route_type} (уверенность: ${confidence}%)`);
+        const strategyLabels = {
+            'simple': 'Simple (прямой ответ)',
+            'react': 'ReAct (исследование)',
+            'plan_execute': 'Plan-Execute (планирование)'
+        };
+        const strategyLabel = strategyLabels[data.strategy] || data.route_type;
+        addThinkingStep('routing', `Стратегия: ${strategyLabel} (уверенность: ${confidence}%)`);
+    });
+
+    // Strategy info event (NEW)
+    eventSource.addEventListener('strategy', (event) => {
+        const data = JSON.parse(event.data);
+        addThinkingStep('routing', `Использую стратегию: ${data.name}`);
     });
 
     // Simple answer (no agent needed)
@@ -416,6 +558,44 @@ function setupSSEListeners(eventSource) {
         eventSource.close();
         currentEventSource = null;
         setInputEnabled(true);
+    });
+
+    // ========================================================================
+    // REACT STRATEGY EVENTS (NEW)
+    // ========================================================================
+
+    eventSource.addEventListener('react_start', (event) => {
+        const data = JSON.parse(event.data);
+        createReActSection();
+        addThinkingStep('execution', `ReAct Agent запущен (макс. ${data.max_iterations || 15} итераций)`);
+    });
+
+    eventSource.addEventListener('react_thought', (event) => {
+        const data = JSON.parse(event.data);
+        addReActThought(data.step || 1, data.thought);
+    });
+
+    eventSource.addEventListener('react_action', (event) => {
+        const data = JSON.parse(event.data);
+        addReActAction(data.step || 1, data.tool, data.tool_input);
+    });
+
+    eventSource.addEventListener('react_observation', (event) => {
+        const data = JSON.parse(event.data);
+        addReActObservation(data.step || 1, data.result);
+    });
+
+    eventSource.addEventListener('react_complete', (event) => {
+        const data = JSON.parse(event.data);
+        addThinkingStep('reflection', `ReAct завершен за ${data.total_steps || 0} шагов`);
+        if (data.answer) {
+            addFinalAnswer(data.answer);
+        }
+    });
+
+    eventSource.addEventListener('react_error', (event) => {
+        const data = JSON.parse(event.data);
+        addThinkingStep('error', `Ошибка ReAct: ${data.error}`);
     });
 
     // Planning events
