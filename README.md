@@ -1,475 +1,396 @@
-# 🧳 Travel Agent MVP
+# 🧳 Travel Agent - Multi-Strategy Router
 
-MVP агента-помощника путешествий с **ReAct паттерном** на базе **Google ADK**.
+Интеллектуальный агент-помощник путешествий с **Multi-Strategy Router** и тремя стратегиями обработки запросов.
 
-![Travel Agent Demo](https://img.shields.io/badge/status-MVP-blue)
+![Travel Agent Demo](https://img.shields.io/badge/status-Production-green)
 ![Python](https://img.shields.io/badge/python-3.11+-green)
+![Version](https://img.shields.io/badge/version-3.0.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-## 🎯 Возможности
+## 🎯 Ключевые возможности
 
-- ✅ **Естественный языковой интерфейс** - общайтесь с агентом на русском языке
-- ✅ **ReAct Loop** (Think → Act → Observe) - прозрачный процесс рассуждений
+- ✅ **Multi-Strategy Router** - интеллектуальный выбор стратегии обработки
+- ✅ **3 стратегии**: Simple, ReAct, Plan-and-Execute
+- ✅ **Естественный языковой интерфейс** - общение на русском языке
 - ✅ **Real-time SSE Streaming** - наблюдайте за работой агента в реальном времени
+- ✅ **Context Management** - извлечение и управление контекстом диалога
+- ✅ **Параллельное выполнение** - независимые задачи выполняются одновременно
 - ✅ **Инструменты**: получение погоды и поиск рейсов
-- ✅ **Память в рамках сессии** - контекст сохраняется во время диалога
-- ✅ **Готов к деплою** на Render (или другие платформы)
+
+---
 
 ## 🏗️ Архитектура
+
+### Multi-Strategy Router
 
 ```
 User Query
     ↓
-[FastAPI + SSE]
-    ↓
-[TravelAgent (Google ADK)]
-    ↓
-[ReAct Loop] ←→ [Functions: weather, flights]
-    ↓
-[SSE Stream] → Frontend (real-time reasoning)
+┌─────────────────────────────────────┐
+│   MultiStrategyRouter               │
+│   (Эвристика + LLM)                 │
+└─────────┬───────────────────────────┘
+          │
+    ┌─────┴────┬──────────────┬─────────┐
+    │          │              │         │
+    ▼          ▼              ▼         ▼
+ SIMPLE     REACT      PLAN_EXECUTE
+    │          │              │
+    │      (LangChain     (Plan-and-
+    │      Agent           Execute
+    │      Executor)       Pipeline)
+    │          │              │
+    └──────────┴──────────────┴─────────►
+                    │
+                    ▼
+              Final Answer
 ```
 
-### Компоненты
+### Когда какая стратегия?
 
-1. **Functions** (`functions/`) - Инструменты агента
-   - `weather.py` - Получение погоды через wttr.in API
-   - `flights.py` - Поиск рейсов (MVP: mock данные)
+| Стратегия | Когда использовать | Примеры |
+|-----------|-------------------|---------|
+| **SIMPLE** | Вопросы без инструментов, общие знания | "Что такое виза?", "Столица Франции?" |
+| **REACT** | Неопределенные, исследовательские задачи | "Исследуй варианты отдыха в Азии", "Подбери что-нибудь интересное" |
+| **PLAN_EXECUTE** | Структурированные задачи с четкими шагами | "Найди рейсы из X в Y", "Спланируй: погода + рейсы + отель" |
 
-2. **Agents** (`agents/`) - Агенты с ReAct паттерном
-   - `travel_agent.py` - Главный агент на Google ADK
+---
 
-3. **API** (`api/`) - Backend сервер
-   - `server.py` - FastAPI с SSE streaming
-
-4. **Frontend** (`frontend/`) - Web интерфейс
-   - `index.html` - Главная страница
-   - `static/style.css` - Стили
-   - `static/app.js` - SSE client логика
-
-## 🚀 Быстрый старт
-
-### Требования
-
-- Python 3.11+
-- Google API Key (для Gemini)
-
-### Установка
-
-```bash
-# 1. Клонируй репозиторий
-git clone https://github.com/YOUR_USERNAME/llm_agent_well.git
-cd llm_agent_well
-
-# 2. Создай виртуальное окружение
-python -m venv venv
-
-# Активируй виртуальное окружение
-# Linux/Mac:
-source venv/bin/activate
-# Windows:
-# venv\Scripts\activate
-
-# 3. Установи зависимости
-pip install -r requirements.txt
-
-# 4. Настрой .env файл
-cp .env.example .env
-# Отредактируй .env - добавь свой GOOGLE_API_KEY
-```
-
-### Настройка .env
-
-Создай `.env` файл в корне проекта:
-
-```bash
-# Google API Configuration
-GOOGLE_API_KEY=your-google-api-key-here
-
-# Model Settings
-MODEL_NAME=gemini-2.0-flash-exp
-TEMPERATURE=0.7
-MAX_TOKENS=2000
-
-# Server Configuration
-HOST=0.0.0.0
-PORT=8000
-
-# Debug Mode
-DEBUG=true
-```
-
-**Как получить Google API Key:**
-
-1. Перейди на [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Создай новый API ключ
-3. Скопируй ключ в `.env` файл
-
-### Запуск
-
-```bash
-# Из корня проекта
-uvicorn api.server:app --reload --port 8000
-
-# Или напрямую через Python
-python api/server.py
-```
-
-После запуска открой браузер:
-```
-http://localhost:8000
-```
-
-## 📝 Примеры использования
-
-### Пример 1: Запрос погоды
-
-**Input:**
-```
-Какая погода в Париже?
-```
-
-**Reasoning Steps (в реальном времени):**
-```
-🚀 START: Агент начал работу
-🤔 THINK: Нужно получить информацию о погоде в Париже
-🔧 ACT: Вызываю get_weather("Paris")
-👀 OBSERVE: Погода получена: +15°C, облачно, влажность 65%
-✅ DONE: В Париже сейчас +15°C, облачно. Влажность 65%, ветер 12 км/ч.
-         Отличная погода для прогулок!
-```
-
-### Пример 2: Планирование поездки
-
-**Input:**
-```
-Спланируй поездку в Париж на выходные
-```
-
-**Reasoning Steps:**
-```
-🚀 START: Обрабатываю запрос
-🤔 THINK: План действий:
-         1. Узнать погоду в Париже
-         2. Уточнить откуда пользователь летит
-         3. Найти рейсы
-🔧 ACT: Вызываю get_weather("Paris")
-👀 OBSERVE: Погода: +15°C, облачно
-✅ DONE: В Париже отличная погода (+15°C)!
-         Из какого города вы планируете вылет, чтобы я мог найти рейсы?
-```
-
-### Пример 3: Полный запрос с рейсами
-
-**Input:**
-```
-Хочу лететь из Амстердама в Париж завтра
-```
-
-**Reasoning Steps:**
-```
-🚀 START: Обрабатываю запрос
-🤔 THINK: Нужна погода в Париже и рейсы из Амстердама
-🔧 ACT: get_weather("Paris")
-👀 OBSERVE: Температура +15°C, облачно
-🔧 ACT: search_flights("Amsterdam", "Paris", "2025-01-16")
-👀 OBSERVE: Найдено 3 рейса: KLM (89€), Air France (95€), EasyJet (65€)
-✅ DONE: [Детальный план поездки с погодой и рейсами]
-```
-
-## 🧪 Тестирование
-
-### Health Check
-
-```bash
-curl http://localhost:8000/health
-```
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "version": "1.0.0",
-  "agent_status": "healthy",
-  "environment": {
-    "google_api_key_set": true,
-    "model_name": "gemini-2.0-flash-exp"
-  }
-}
-```
-
-### Non-streaming Query (для тестирования)
-
-```bash
-curl -X POST http://localhost:8000/api/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Какая погода в Лондоне?"}'
-```
-
-### SSE Stream (в браузере)
-
-```
-http://localhost:8000/api/stream?q=погода%20в%20Токио
-```
-
-### Unit тесты
-
-```bash
-# Тестирование функций
-python functions/weather.py
-python functions/flights.py
-
-# Тестирование агента
-python agents/travel_agent.py
-```
-
-## 🎨 Frontend Features
-
-- **Modern UI** - Минималистичный дизайн с градиентами
-- **Real-time Streaming** - SSE для live обновлений
-- **Step Visualization** - Разные цвета для каждого типа шага:
-  - 🚀 START (синий) - Начало работы
-  - 🤔 THINK (фиолетовый) - Размышление
-  - 🔧 ACT (оранжевый) - Действие
-  - 👀 OBSERVE (пурпурный) - Наблюдение
-  - ✅ DONE (зеленый) - Завершение
-  - ❌ ERROR (красный) - Ошибка
-- **Keyboard Shortcuts**:
-  - Enter - отправить запрос
-  - Shift+Enter - новая строка
-- **Session Memory** - Контекст сохраняется между запросами
-- **Responsive Design** - Адаптация под мобильные устройства
-
-## 🔧 Технологии
-
-### Backend
-- **Python 3.11** - Основной язык
-- **Google ADK** - Orchestration framework для агентов
-- **FastAPI** - Современный async web framework
-- **SSE (Server-Sent Events)** - Real-time streaming
-- **Pydantic** - Валидация данных
-- **python-dotenv** - Управление переменными окружения
-
-### AI/ML
-- **Google Gemini 2.0 Flash** - LLM для агента
-- **ReAct Pattern** - Reasoning and Acting paradigm
-
-### Frontend
-- **Vanilla JavaScript** - Без фреймворков для простоты
-- **EventSource API** - SSE client
-- **CSS3** - Современные стили с градиентами и анимациями
-
-### APIs
-- **wttr.in** - Бесплатный API погоды
-- **Mock Data** - Для поиска рейсов (MVP)
-
-## 📦 Структура проекта
+## 📁 Структура проекта
 
 ```
 llm_agent_well/
 │
-├── functions/              # Инструменты агента
-│   ├── __init__.py
-│   ├── weather.py         # wttr.in API integration
-│   └── flights.py         # Поиск рейсов (mock)
+├── core/                      # Ядро системы
+│   ├── models.py              # Pydantic модели (RouteType, Plan, Step, etc.)
+│   ├── router.py              # MultiStrategyRouter + IntentClassifier
+│   ├── planner.py             # TaskPlanner (создание DAG планов)
+│   ├── orchestrator.py        # PlanOrchestrator (параллельное выполнение)
+│   ├── reflector.py           # ResultReflector (проверка результатов)
+│   ├── state_manager.py       # StateManager (управление TravelContext)
+│   └── context_extractor.py   # ContextExtractor (извлечение сущностей)
 │
-├── agents/                 # Агенты
-│   ├── __init__.py
-│   └── travel_agent.py    # Travel Agent с Google ADK
+├── agents/                    # Агенты
+│   ├── travel_agent.py        # TravelAgent (главный агент с Multi-Strategy)
+│   ├── react_agent.py         # TravelReActAgent (ReAct loop)
+│   └── legacy_agent.py        # Legacy Google ADK agent
 │
-├── api/                    # FastAPI backend
-│   ├── __init__.py
-│   └── server.py          # Endpoints + SSE streaming
+├── api/                       # Backend API
+│   └── server.py              # FastAPI с SSE streaming
 │
-├── frontend/               # Web интерфейс
-│   ├── index.html
-│   └── static/
-│       ├── style.css      # Стили
-│       └── app.js         # SSE client
+├── frontend/                  # Web интерфейс
+│   ├── index.html             # Главная страница
+│   └── static/                # JS, CSS файлы
+│       ├── app_premium.js     # Premium UI с визуализацией
+│       └── style_premium.css  # Стили
 │
-├── tests/                  # Тесты (будущее)
-│   └── test_agent.py
+├── functions/                 # Инструменты агента
+│   ├── weather.py             # Получение погоды (wttr.in API)
+│   └── flights.py             # Поиск рейсов (mock данные)
 │
-├── requirements.txt        # Python dependencies
-├── runtime.txt            # Python версия
-├── .env.example           # Пример env переменных
-├── .gitignore
-└── README.md
+├── requirements.txt           # Python зависимости
+├── runtime.txt                # Python версия для деплоя
+└── .env.example               # Пример переменных окружения
 ```
-
-## 🚀 Деплой на Render
-
-Проект готов к деплою на [Render](https://render.com):
-
-### Шаги для деплоя:
-
-1. **Push код на GitHub** (если еще не сделано)
-   ```bash
-   git add .
-   git commit -m "Ready for deploy"
-   git push origin main
-   ```
-
-2. **Создай Web Service на Render**
-   - Перейди на [render.com](https://render.com)
-   - New → Web Service
-   - Подключи свой GitHub репозиторий
-
-3. **Настрой Build & Start**
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn api.server:app --host 0.0.0.0 --port $PORT`
-
-4. **Добавь Environment Variables**
-   - `GOOGLE_API_KEY` = ваш API ключ
-   - `MODEL_NAME` = gemini-2.0-flash-exp
-   - `TEMPERATURE` = 0.7
-   - `MAX_TOKENS` = 2000
-
-5. **Deploy!**
-   - Render автоматически задеплоит приложение
-   - Получишь URL типа `https://your-app.onrender.com`
-
-### Альтернативные платформы
-
-Проект также совместим с:
-- **Railway** - аналогично Render
-- **Heroku** - требуется `Procfile`
-- **Google Cloud Run** - требуется `Dockerfile`
-- **AWS Lambda** - требуется адаптация для serverless
-
-## 🔒 Безопасность
-
-- ✅ API ключи хранятся в `.env` (не коммитятся в Git)
-- ✅ CORS настроен (в production ограничить домены)
-- ✅ Валидация входных данных через Pydantic
-- ✅ Таймауты для внешних API запросов
-- ✅ Обработка ошибок и исключений
-
-**⚠️ Для production:**
-- Добавь rate limiting
-- Включи HTTPS
-- Ограничь CORS конкретными доменами
-- Добавь аутентификацию пользователей
-- Используй secrets manager для API ключей
-
-## 🛠️ Разработка
-
-### Добавление новых инструментов
-
-1. Создай файл в `functions/`:
-```python
-def my_new_tool(param: str) -> Dict[str, Any]:
-    """
-    Описание инструмента.
-    """
-    # Твоя логика
-    return {"success": True, "data": "..."}
-
-# Metadata для ADK
-my_new_tool.metadata = {
-    "name": "my_new_tool",
-    "description": "Что делает инструмент",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "param": {
-                "type": "string",
-                "description": "Описание параметра"
-            }
-        },
-        "required": ["param"]
-    }
-}
-```
-
-2. Импортируй в `agents/travel_agent.py`:
-```python
-from functions.my_tool import my_new_tool
-```
-
-3. Добавь в список инструментов:
-```python
-self.tools = [
-    Tool(function_declarations=[
-        # ... existing tools ...
-        {
-            "name": "my_new_tool",
-            "description": "...",
-            "parameters": {...}
-        }
-    ])
-]
-```
-
-4. Добавь обработку в `_execute_function()`:
-```python
-elif function_name == "my_new_tool":
-    return my_new_tool(**arguments)
-```
-
-### Логирование
-
-Для debugging добавь логирование:
-```python
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-logger.info("Agent started")
-logger.debug(f"Query: {query}")
-```
-
-## 📊 Roadmap
-
-### ✅ MVP (Done)
-- [x] ReAct паттерн с Google ADK
-- [x] SSE streaming
-- [x] Weather function (wttr.in)
-- [x] Flights function (mock)
-- [x] Frontend UI
-- [x] Готовность к деплою
-
-### 🔄 Следующие шаги
-- [ ] Интеграция с реальным API рейсов (Amadeus, Skyscanner)
-- [ ] Добавить инструмент для поиска отелей
-- [ ] Добавить достопримечательности (Google Places API)
-- [ ] Персистентная память (database)
-- [ ] Аутентификация пользователей
-- [ ] История диалогов
-- [ ] Экспорт плана поездки (PDF, Email)
-- [ ] Мультиязычность
-- [ ] Unit и integration тесты
-- [ ] CI/CD pipeline
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
-
-1. Fork репозиторий
-2. Создай feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit изменения (`git commit -m 'Add some AmazingFeature'`)
-4. Push в branch (`git push origin feature/AmazingFeature`)
-5. Открой Pull Request
-
-## 📄 Лицензия
-
-MIT License - см. [LICENSE](LICENSE) файл для деталей.
-
-## 👨‍💻 Автор
-
-Created with ❤️ using Google ADK and Gemini 2.0
-
-## 🙏 Acknowledgments
-
-- [Google ADK](https://github.com/google/adk) - Agent Development Kit
-- [FastAPI](https://fastapi.tiangolo.com/) - Web framework
-- [wttr.in](https://wttr.in) - Weather API
-- [SSE Starlette](https://github.com/sysid/sse-starlette) - SSE support
 
 ---
 
-**Вопросы?** Открой [issue](https://github.com/YOUR_USERNAME/llm_agent_well/issues)
+## 🚀 Быстрый старт
 
-**Хочешь улучшить?** Создай [pull request](https://github.com/YOUR_USERNAME/llm_agent_well/pulls)
+### 1. Установка зависимостей
 
-**Понравилось?** Поставь ⭐ на GitHub!
+```bash
+# Клонировать репозиторий
+git clone <repo-url>
+cd llm_agent_well
+
+# Создать виртуальное окружение
+python -m venv venv
+source venv/bin/activate  # На Windows: venv\Scripts\activate
+
+# Установить зависимости
+pip install -r requirements.txt
+```
+
+### 2. Настройка переменных окружения
+
+Создайте файл `.env`:
+
+```bash
+# OpenAI API Key (обязательно)
+OPENAI_API_KEY=sk-...
+
+# Настройки модели (опционально)
+MODEL_NAME=gpt-4o-mini
+TEMPERATURE=0.7
+MAX_TOKENS=2000
+```
+
+### 3. Запуск сервера
+
+```bash
+# Запустить FastAPI сервер
+uvicorn api.server:app --reload --host 0.0.0.0 --port 8000
+```
+
+Откройте в браузере: [http://localhost:8000](http://localhost:8000)
+
+---
+
+## 📊 Детали архитектуры
+
+### 1. SIMPLE Strategy
+
+**Использование:** Простые вопросы без использования инструментов
+
+**Pipeline:**
+```
+Query → MultiStrategyRouter → LLM → Direct Answer
+```
+
+**Примеры:**
+- "Что такое шенгенская виза?"
+- "Какая столица Франции?"
+- "Сколько часов лететь до Парижа?"
+
+### 2. REACT Strategy
+
+**Использование:** Гибкие исследовательские задачи без четкого плана
+
+**Pipeline:**
+```
+Query → MultiStrategyRouter → TravelReActAgent →
+    ↓
+[ReAct Loop]
+    Thought: обдумывание
+    Action: выбор инструмента
+    Observation: результат
+    (повтор до решения)
+    ↓
+Final Answer
+```
+
+**Примеры:**
+- "Исследуй варианты отдыха в Юго-Восточной Азии"
+- "Подбери что-нибудь интересное в Европе"
+- "Посоветуй куда поехать весной"
+
+### 3. PLAN_EXECUTE Strategy
+
+**Использование:** Структурированные задачи с четкими шагами
+
+**Pipeline:**
+```
+Query → MultiStrategyRouter →
+    ↓
+ContextExtractor → IntentClassifier →
+    ↓
+TaskPlanner (создает DAG план) →
+    ↓
+PlanOrchestrator (параллельное выполнение) →
+    ↓
+ResultReflector (проверка + replan если нужно) →
+    ↓
+Final Answer
+```
+
+**Примеры:**
+- "Найди рейсы из Москвы в Париж на 20 января"
+- "Какая погода в Берлине?"
+- "Спланируй: погода + рейсы + отель в Токио"
+
+---
+
+## 🔧 Компоненты
+
+### MultiStrategyRouter
+
+**Функции:**
+- Классификация запросов на 3 типа (SIMPLE/REACT/PLAN_EXECUTE)
+- Двухуровневая стратегия: эвристика + LLM
+- Паттерны ключевых слов для быстрой классификации
+- LLM классификация при неопределенности
+
+**Пример использования:**
+```python
+from core.router import MultiStrategyRouter
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(model="gpt-4o-mini")
+router = MultiStrategyRouter(llm)
+
+decision = await router.route("Найди рейсы в Париж")
+print(decision.route_type)  # RouteType.PLAN_EXECUTE
+```
+
+### TravelReActAgent
+
+**Функции:**
+- ReAct loop (Reasoning + Acting)
+- Гибкая адаптация на ходу
+- Streaming поддержка
+- Обработка ошибок
+
+**Пример использования:**
+```python
+from agents.react_agent import TravelReActAgent
+
+agent = TravelReActAgent(llm=llm, tools=tools)
+
+async for event in agent.run(query, session_id):
+    print(event)  # react_thought, react_action, react_observation
+```
+
+### TaskPlanner + PlanOrchestrator
+
+**Функции:**
+- Создание структурированных DAG планов
+- Параллельное выполнение независимых шагов
+- Обработка зависимостей между шагами
+- Валидация циклических зависимостей
+
+**Пример плана:**
+```json
+{
+  "goal": "Найти рейсы Москва→Париж на 20 января",
+  "steps": [
+    {
+      "id": 1,
+      "action": "get_weather",
+      "params": {"city": "Paris"},
+      "depends_on": [],
+      "can_parallel": true
+    },
+    {
+      "id": 2,
+      "action": "search_flights",
+      "params": {
+        "from_city": "Moscow",
+        "to_city": "Paris",
+        "date": "2025-01-20"
+      },
+      "depends_on": [],
+      "can_parallel": true
+    }
+  ]
+}
+```
+
+---
+
+## 📡 API Endpoints
+
+### `GET /api/stream`
+
+SSE streaming endpoint для реального времени
+
+**Query Parameters:**
+- `q` (string, required) - запрос пользователя
+- `session_id` (string, optional) - ID сессии для памяти
+
+**SSE Events:**
+
+**Common:**
+- `start` - Agent started
+- `routing_complete` - Routing decision (includes strategy)
+- `done` - Processing complete
+
+**SIMPLE:**
+- `simple_answer` - Direct answer
+
+**REACT:**
+- `react_start` - ReAct started
+- `react_thought` - Reasoning step
+- `react_action` - Tool action
+- `react_observation` - Tool result
+- `react_complete` - ReAct finished
+
+**PLAN_EXECUTE:**
+- `planning_start/plan_created` - Plan creation
+- `execution_start/execution_complete` - Execution
+- `reflection_complete` - Result reflection
+- `final_answer` - Final answer
+
+---
+
+## 🧪 Тестирование
+
+```bash
+# Запустить unit тесты
+python -m pytest tests/
+
+# Тестирование router
+python core/router.py
+
+# Тестирование ReAct agent
+python agents/react_agent.py
+
+# Тестирование моделей
+python core/models.py
+```
+
+---
+
+## 🚢 Деплой
+
+### Render
+
+1. Создайте Web Service на [Render](https://render.com)
+2. Подключите Git репозиторий
+3. Настройте:
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `uvicorn api.server:app --host 0.0.0.0 --port 10000`
+4. Добавьте Environment Variables:
+   - `OPENAI_API_KEY`
+   - `MODEL_NAME` (optional)
+
+---
+
+## 📝 Changelog
+
+### Version 3.0.0 - Multi-Strategy Router
+- ✨ Добавлен Multi-Strategy Router с 3 стратегиями
+- ✨ Добавлен TravelReActAgent для гибких задач
+- ✨ Обновлен TravelAgent с поддержкой всех стратегий
+- ✨ Обновлен API с новыми SSE событиями
+- 📝 Обновлена документация
+
+### Version 2.1 - Plan-and-Execute + Context Management
+- ✨ План-and-Execute архитектура
+- ✨ Context Management (StateManager, ContextExtractor)
+- ✨ Параллельное выполнение задач
+- ✨ Result Reflection + Replan логика
+
+### Version 1.0 - MVP ReAct
+- 🎉 Первая версия с ReAct паттерном
+- ✨ Google ADK агент
+- ✨ SSE Streaming
+
+---
+
+## 🛠️ Технологии
+
+- **LangChain** - Фреймворк для LLM приложений
+- **OpenAI GPT-4o-mini** - Language model
+- **FastAPI** - Modern web framework
+- **SSE (Server-Sent Events)** - Real-time streaming
+- **Pydantic** - Data validation
+- **AsyncIO** - Асинхронное выполнение
+
+---
+
+## 📄 Лицензия
+
+MIT License
+
+---
+
+## 🤝 Contributing
+
+Pull requests are welcome! For major changes, please open an issue first.
+
+---
+
+## 📧 Контакты
+
+Вопросы? Создайте Issue на GitHub!

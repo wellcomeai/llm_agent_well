@@ -1,0 +1,1002 @@
+/**
+ * Travel Agent V2 - Premium Design System (Production Ready)
+ * Inspired by: ChatGPT, Claude, Perplexity, Linear
+ * Version: 2.3.0 - Final
+ * 
+ * Изменения:
+ * - Удален typing indicator (избыточен)
+ * - Plan-block заменен на plan-section (внутри thinking)
+ * - Добавлен thinking-meta для счетчика шагов
+ * - Обновлены responsive стили
+ */
+
+/* ============================================================================
+   DESIGN TOKENS
+   ========================================================================= */
+:root {
+    /* Colors - Light Mode */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f7f7f8;
+    --bg-tertiary: #ececf1;
+    --bg-hover: #f0f0f4;
+    --bg-active: #e8e8ed;
+
+    --text-primary: #0d0d0d;
+    --text-secondary: #676767;
+    --text-tertiary: #8e8e93;
+    --text-placeholder: #aeaeb2;
+
+    --border-color: #e3e3e8;
+    --border-hover: #d1d1d6;
+
+    /* Accent Colors */
+    --accent-primary: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-light: #dbeafe;
+
+    --success: #10b981;
+    --success-light: #d1fae5;
+
+    --warning: #f59e0b;
+    --warning-light: #fef3c7;
+
+    --error: #ef4444;
+    --error-light: #fee2e2;
+
+    --info: #0ea5e9;
+    --info-light: #e0f2fe;
+
+    /* Shadows - Subtle & Modern */
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+
+    /* Spacing System (8px base) */
+    --space-1: 0.25rem;  /* 4px */
+    --space-2: 0.5rem;   /* 8px */
+    --space-3: 0.75rem;  /* 12px */
+    --space-4: 1rem;     /* 16px */
+    --space-5: 1.25rem;  /* 20px */
+    --space-6: 1.5rem;   /* 24px */
+    --space-8: 2rem;     /* 32px */
+    --space-10: 2.5rem;  /* 40px */
+    --space-12: 3rem;    /* 48px */
+    --space-16: 4rem;    /* 64px */
+
+    /* Typography */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", monospace;
+
+    /* Font Sizes */
+    --text-xs: 0.75rem;      /* 12px */
+    --text-sm: 0.875rem;     /* 14px */
+    --text-base: 0.9375rem;  /* 15px */
+    --text-lg: 1.0625rem;    /* 17px */
+    --text-xl: 1.25rem;      /* 20px */
+    --text-2xl: 1.5rem;      /* 24px */
+    --text-3xl: 1.875rem;    /* 30px */
+
+    /* Border Radius */
+    --radius-sm: 0.5rem;     /* 8px */
+    --radius-md: 0.75rem;    /* 12px */
+    --radius-lg: 1rem;       /* 16px */
+    --radius-xl: 1.5rem;     /* 24px */
+    --radius-full: 9999px;
+
+    /* Transitions */
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #0d0d0d;
+        --bg-secondary: #1a1a1a;
+        --bg-tertiary: #2d2d2d;
+        --bg-hover: #252525;
+        --bg-active: #333333;
+
+        --text-primary: #ececec;
+        --text-secondary: #b4b4b4;
+        --text-tertiary: #8e8e93;
+        --text-placeholder: #666666;
+
+        --border-color: #2d2d2d;
+        --border-hover: #404040;
+
+        --accent-light: #1e3a8a;
+        --success-light: #064e3b;
+        --warning-light: #78350f;
+        --error-light: #7f1d1d;
+        --info-light: #0c4a6e;
+    }
+}
+
+/* ============================================================================
+   RESET & BASE
+   ========================================================================= */
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.6;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    overflow: hidden;
+}
+
+/* ============================================================================
+   APP LAYOUT
+   ========================================================================= */
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+/* ============================================================================
+   HEADER - Fixed Top
+   ========================================================================= */
+.app-header {
+    flex-shrink: 0;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding: var(--space-4) var(--space-6);
+    z-index: 100;
+}
+
+.header-content {
+    max-width: 56rem;
+    margin: 0 auto;
+}
+
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+}
+
+.header-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.header-title h1 {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+}
+
+.header-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-1) var(--space-3);
+    background: var(--accent-light);
+    border: 1px solid var(--accent-primary);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--accent-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.header-subtitle {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+/* ============================================================================
+   WELCOME SCREEN
+   ========================================================================= */
+.welcome-screen {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-12) var(--space-6);
+    overflow-y: auto;
+    background: var(--bg-primary);
+}
+
+.welcome-screen.hidden {
+    display: none;
+}
+
+.welcome-content {
+    max-width: 48rem;
+    text-align: center;
+    animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.welcome-icon {
+    font-size: 4rem;
+    margin-bottom: var(--space-6);
+    animation: float 3s ease-in-out infinite;
+}
+
+.welcome-content h2 {
+    font-size: var(--text-3xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--space-4);
+    letter-spacing: -0.03em;
+}
+
+.welcome-description {
+    font-size: var(--text-lg);
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-12);
+    max-width: 40rem;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Welcome Features */
+.welcome-features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-12);
+    text-align: left;
+}
+
+.feature {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    transition: all var(--transition-base);
+}
+
+.feature:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.feature-icon {
+    font-size: 2rem;
+    margin-bottom: var(--space-3);
+    display: block;
+}
+
+.feature-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-2);
+}
+
+.feature-text {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* Welcome Examples */
+.welcome-examples {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    max-width: 36rem;
+    margin: 0 auto;
+}
+
+.example-title {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-tertiary);
+    margin-bottom: var(--space-2);
+    text-align: left;
+}
+
+.example-button {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--space-4) var(--space-5);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.example-button:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+    transform: translateX(4px);
+    box-shadow: var(--shadow-sm);
+}
+
+.example-button:active {
+    transform: translateX(2px);
+}
+
+/* ============================================================================
+   CHAT CONTAINER - Scrollable Middle Section
+   ========================================================================= */
+.chat-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--space-8) var(--space-6);
+    background: var(--bg-primary);
+    scroll-behavior: smooth;
+    scroll-padding-bottom: var(--space-8);
+}
+
+/* Better scrollbar */
+.chat-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-container::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: var(--radius-full);
+    border: 2px solid var(--bg-primary);
+}
+
+.chat-container::-webkit-scrollbar-thumb:hover {
+    background: var(--border-hover);
+}
+
+/* ============================================================================
+   MESSAGES
+   ========================================================================= */
+.message {
+    margin-bottom: var(--space-6);
+    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    max-width: 56rem;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.message:last-child {
+    margin-bottom: var(--space-4);
+}
+
+/* User Message */
+.message.user {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+}
+
+.message.assistant {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+}
+
+.message-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-full);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: var(--text-xs);
+}
+
+.message.user .message-avatar {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.message.assistant .message-avatar {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.message-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.message-text {
+    font-size: var(--text-base);
+    line-height: 1.7;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Code in messages */
+.message-text code {
+    background: var(--bg-tertiary);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--text-primary);
+}
+
+.message-text pre {
+    background: var(--bg-secondary);
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    margin: var(--space-3) 0;
+    border: 1px solid var(--border-color);
+}
+
+.message-text pre code {
+    background: none;
+    padding: 0;
+}
+
+/* ============================================================================
+   THINKING BLOCK - Единый блок для всего процесса
+   ========================================================================= */
+.thinking-block {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    margin: var(--space-4) 0;
+    overflow: hidden;
+    box-shadow: var(--shadow-xs);
+}
+
+.thinking-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast);
+}
+
+.thinking-header:hover {
+    background: var(--bg-hover);
+}
+
+.thinking-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1;
+    font-weight: 600;
+    font-size: var(--text-base);
+    color: var(--text-primary);
+}
+
+.thinking-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--info);
+    flex-shrink: 0;
+}
+
+.thinking-icon.spinning {
+    animation: spin 1s linear infinite;
+}
+
+.thinking-meta {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.thinking-chevron {
+    width: 20px;
+    height: 20px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    transition: transform var(--transition-base);
+}
+
+.thinking-block.collapsed .thinking-chevron {
+    transform: rotate(-90deg);
+}
+
+.thinking-content {
+    border-top: 1px solid var(--border-color);
+    padding: var(--space-5);
+    max-height: 800px;
+    overflow-y: auto;
+    transition: max-height var(--transition-slow), padding var(--transition-slow);
+}
+
+.thinking-block.collapsed .thinking-content {
+    max-height: 0;
+    padding: 0 var(--space-5);
+    border-top: none;
+    overflow: hidden;
+}
+
+/* Thinking Steps (routing, planning, etc) */
+.thinking-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+}
+
+.thinking-step {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.thinking-step-label {
+    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.thinking-step-text {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+/* ============================================================================
+   PLAN SECTION - Внутри Thinking Block
+   ========================================================================= */
+.plan-section {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-top: var(--space-4);
+}
+
+.plan-section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.plan-section-title svg {
+    width: 18px;
+    height: 18px;
+    color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.plan-section-title span {
+    font-weight: 600;
+    font-size: var(--text-base);
+    color: var(--text-primary);
+}
+
+.plan-section-meta {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.plan-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+/* Plan Step */
+.plan-step {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Active state with progress bar */
+.plan-step.active {
+    border-color: var(--accent-primary);
+    background: var(--accent-light);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.plan-step.active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 2px;
+    width: 100%;
+    background: linear-gradient(90deg, 
+        transparent 0%, 
+        var(--accent-primary) 50%, 
+        transparent 100%);
+    animation: progress 1.5s ease-in-out infinite;
+}
+
+.plan-step.completed {
+    opacity: 0.85;
+    border-color: var(--success);
+}
+
+.plan-step.failed {
+    border-color: var(--error);
+    background: var(--error-light);
+}
+
+.plan-step-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.plan-step-icon {
+    font-size: 1.1em;
+    flex-shrink: 0;
+}
+
+.plan-step-number {
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.plan-step-description {
+    font-weight: 500;
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.plan-step-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    margin-bottom: var(--space-2);
+}
+
+.plan-step-action {
+    font-family: var(--font-mono);
+    background: var(--bg-tertiary);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.plan-step-time {
+    opacity: 0.7;
+}
+
+.plan-step-deps {
+    font-size: var(--text-xs);
+    opacity: 0.7;
+}
+
+.plan-step-status {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-color);
+    margin-top: var(--space-2);
+}
+
+.plan-step-status.running {
+    color: var(--accent-primary);
+    animation: pulse 2s infinite;
+}
+
+.plan-step-status.completed {
+    color: var(--success);
+}
+
+.plan-step-status.failed {
+    color: var(--error);
+}
+
+/* ============================================================================
+   INPUT CONTAINER - Fixed Bottom
+   ========================================================================= */
+.input-container {
+    flex-shrink: 0;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+    padding: var(--space-5) var(--space-6);
+    z-index: 100;
+}
+
+.input-wrapper {
+    max-width: 56rem;
+    margin: 0 auto;
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-end;
+}
+
+.message-input {
+    flex: 1;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4) var(--space-5);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    resize: none;
+    max-height: 200px;
+    transition: all var(--transition-fast);
+}
+
+.message-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.message-input::placeholder {
+    color: var(--text-placeholder);
+}
+
+.send-button {
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: var(--accent-primary);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+    box-shadow: var(--shadow-sm);
+}
+
+.send-button:hover:not(:disabled) {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.send-button:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: var(--shadow-xs);
+}
+
+.send-button:disabled {
+    background: var(--bg-tertiary);
+    color: var(--text-tertiary);
+    cursor: not-allowed;
+    opacity: 0.5;
+    box-shadow: none;
+}
+
+.input-hint {
+    max-width: 56rem;
+    margin: var(--space-3) auto 0;
+    text-align: center;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+}
+
+.input-hint kbd {
+    display: inline-block;
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    box-shadow: var(--shadow-xs);
+}
+
+/* ============================================================================
+   ANIMATIONS
+   ========================================================================= */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(24px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes progress {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* ============================================================================
+   UTILITIES
+   ========================================================================= */
+.hidden {
+    display: none !important;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN
+   ========================================================================= */
+@media (max-width: 768px) {
+    .app-header {
+        padding: var(--space-3) var(--space-4);
+    }
+
+    .header-title h1 {
+        font-size: var(--text-lg);
+    }
+
+    .header-icon {
+        width: 20px;
+        height: 20px;
+    }
+
+    .header-badge {
+        font-size: 0.625rem;
+        padding: var(--space-1) var(--space-2);
+    }
+
+    .chat-container {
+        padding: var(--space-6) var(--space-4);
+    }
+
+    .input-container {
+        padding: var(--space-4);
+    }
+
+    .message {
+        margin-bottom: var(--space-5);
+    }
+
+    .message-avatar {
+        width: 28px;
+        height: 28px;
+    }
+
+    .welcome-content h2 {
+        font-size: var(--text-2xl);
+    }
+
+    .welcome-description {
+        font-size: var(--text-base);
+    }
+
+    .welcome-features {
+        grid-template-columns: 1fr;
+        gap: var(--space-3);
+    }
+
+    .thinking-content,
+    .thinking-block.collapsed .thinking-content {
+        padding-left: var(--space-4);
+        padding-right: var(--space-4);
+    }
+
+    .plan-section {
+        padding: var(--space-3);
+    }
+
+    .plan-step {
+        padding: var(--space-3);
+    }
+
+    .plan-step-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-2);
+    }
+}
+
+/* ============================================================================
+   PRINT STYLES
+   ========================================================================= */
+@media print {
+    .app-header,
+    .input-container,
+    .welcome-screen {
+        display: none;
+    }
+
+    .chat-container {
+        overflow: visible;
+        padding: 0;
+    }
+
+    .message {
+        page-break-inside: avoid;
+    }
+}
