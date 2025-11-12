@@ -263,10 +263,19 @@ class TravelAgent:
             # 3. AGENT ROUTE - Plan and Execute
             logger.info("Agent route - starting plan-and-execute")
 
-            # Get memory context
+            # Get memory context (convert to simple format)
             memory = self._get_memory(session_id)
+            chat_history = []
+            if hasattr(memory, 'chat_memory') and memory.chat_memory.messages:
+                # Convert LangChain messages to simple dicts
+                for msg in memory.chat_memory.messages:
+                    chat_history.append({
+                        "role": msg.type,
+                        "content": msg.content
+                    })
+
             context = {
-                "chat_history": memory.chat_memory.messages if hasattr(memory, 'chat_memory') else []
+                "chat_history": chat_history
             }
 
             # Replan loop
@@ -303,15 +312,8 @@ class TravelAgent:
                 # 3b. EXECUTION
                 yield {"event": "execution_start", "data": {"plan_id": id(plan)}}
 
-                # Stream callback для orchestrator
-                async def stream_callback(event):
-                    """Forward orchestrator events to SSE stream"""
-                    yield event
-
-                execution_result = await self.orchestrator.execute_plan(
-                    plan,
-                    stream_callback=stream_callback
-                )
+                # Execute plan without callback (we'll handle events separately)
+                execution_result = await self.orchestrator.execute_plan(plan)
 
                 yield {
                     "event": "execution_complete",
