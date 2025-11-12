@@ -95,6 +95,206 @@ body {
 }
 
 /* ============================================================================
+   APP HEADER
+   ========================================================================= */
+.app-header {
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding: var(--space-lg) var(--space-xl);
+    flex-shrink: 0;
+}
+
+.header-content {
+    max-width: 48rem;
+    margin: 0 auto;
+}
+
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-xs);
+}
+
+.header-icon {
+    width: 28px;
+    height: 28px;
+    color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.header-title h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.header-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border: 1px solid rgba(102, 126, 234, 0.2);
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.header-subtitle {
+    font-size: 0.9375rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* ============================================================================
+   WELCOME SCREEN
+   ========================================================================= */
+.welcome-screen {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-2xl) var(--space-md);
+    overflow-y: auto;
+}
+
+.welcome-content {
+    max-width: 42rem;
+    text-align: center;
+    animation: fadeIn 600ms ease;
+}
+
+.welcome-icon {
+    font-size: 4rem;
+    margin-bottom: var(--space-lg);
+    animation: float 3s ease-in-out infinite;
+}
+
+.welcome-content h2 {
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-md);
+}
+
+.welcome-description {
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-2xl);
+    max-width: 36rem;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Welcome Features */
+.welcome-features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-lg);
+    margin-bottom: var(--space-2xl);
+    text-align: left;
+}
+
+.feature {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: var(--space-lg);
+    transition: all var(--transition);
+}
+
+.feature:hover {
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.feature-icon {
+    font-size: 2rem;
+    margin-bottom: var(--space-sm);
+    display: block;
+}
+
+.feature-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.feature-text {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* Welcome Examples */
+.welcome-examples {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    max-width: 32rem;
+    margin: 0 auto;
+}
+
+.example-title {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-sm);
+    text-align: left;
+}
+
+.example-button {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: var(--space-md) var(--space-lg);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.example-button:hover {
+    border-color: var(--accent-primary);
+    background: var(--bg-secondary);
+    transform: translateX(4px);
+    box-shadow: var(--shadow-sm);
+}
+
+.example-button:active {
+    transform: translateX(2px);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+/* ============================================================================
    CHAT CONTAINER
    ========================================================================= */
 .chat-container {
@@ -386,6 +586,27 @@ body {
     opacity: 0.5;
 }
 
+/* Input Hint */
+.input-hint {
+    max-width: 48rem;
+    margin: var(--space-sm) auto 0;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--text-tertiary);
+}
+
+.input-hint kbd {
+    display: inline-block;
+    padding: 0.125rem 0.375rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
 /* ============================================================================
    ANIMATIONS
    ========================================================================= */
@@ -413,13 +634,77 @@ body {
     .chat-container {
         padding: var(--space-lg) var(--space-md);
     }
-    
+
     .input-container {
         padding: var(--space-md);
     }
-    
+
     .message {
         margin-bottom: var(--space-xl);
+    }
+
+    /* Header */
+    .app-header {
+        padding: var(--space-md);
+    }
+
+    .header-title h1 {
+        font-size: 1.25rem;
+    }
+
+    .header-icon {
+        width: 24px;
+        height: 24px;
+    }
+
+    .header-badge {
+        font-size: 0.6875rem;
+        padding: 0.2rem 0.5rem;
+    }
+
+    .header-subtitle {
+        font-size: 0.875rem;
+    }
+
+    /* Welcome Screen */
+    .welcome-screen {
+        padding: var(--space-lg) var(--space-md);
+    }
+
+    .welcome-icon {
+        font-size: 3rem;
+    }
+
+    .welcome-content h2 {
+        font-size: 1.5rem;
+    }
+
+    .welcome-description {
+        font-size: 0.9375rem;
+    }
+
+    .welcome-features {
+        grid-template-columns: 1fr;
+        gap: var(--space-md);
+    }
+
+    /* Plan Block */
+    .plan-header {
+        padding: var(--space-sm) var(--space-md);
+    }
+
+    .plan-content {
+        padding: var(--space-sm) var(--space-md);
+    }
+
+    .plan-step {
+        padding: var(--space-sm);
+    }
+
+    .plan-step-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-xs);
     }
 }
 

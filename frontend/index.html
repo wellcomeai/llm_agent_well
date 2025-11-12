@@ -3,11 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Travel Agent</title>
+    <title>Travel Agent - Plan and Execute</title>
     <link rel="stylesheet" href="/static/style_premium.css">
 </head>
 <body>
     <div class="app">
+        <!-- Header -->
+        <div class="app-header">
+            <div class="header-content">
+                <div class="header-title">
+                    <svg class="header-icon" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" opacity="0.3"/>
+                        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <h1>Travel Agent</h1>
+                    <span class="header-badge">Plan & Execute</span>
+                </div>
+                <div class="header-subtitle">
+                    AI-powered travel planning with intelligent execution
+                </div>
+            </div>
+        </div>
+
+        <!-- Welcome Screen (hidden after first message) -->
+        <div class="welcome-screen" id="welcomeScreen">
+            <div class="welcome-content">
+                <div class="welcome-icon">✈️</div>
+                <h2>Welcome to Travel Agent V2</h2>
+                <p class="welcome-description">
+                    Powered by Plan-and-Execute architecture - your AI assistant will create a structured plan
+                    before executing tasks in parallel for faster results.
+                </p>
+
+                <div class="welcome-features">
+                    <div class="feature">
+                        <div class="feature-icon">📋</div>
+                        <div class="feature-title">Smart Planning</div>
+                        <div class="feature-text">Creates detailed execution plans</div>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">⚡</div>
+                        <div class="feature-title">Parallel Execution</div>
+                        <div class="feature-text">Runs independent tasks simultaneously</div>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">🔍</div>
+                        <div class="feature-title">Real-time Progress</div>
+                        <div class="feature-text">Watch each step as it completes</div>
+                    </div>
+                </div>
+
+                <div class="welcome-examples">
+                    <div class="example-title">Try asking:</div>
+                    <button class="example-button" onclick="fillExample(this)">
+                        Find flights from Moscow to Paris on January 20
+                    </button>
+                    <button class="example-button" onclick="fillExample(this)">
+                        Plan a trip to Berlin for the weekend
+                    </button>
+                    <button class="example-button" onclick="fillExample(this)">
+                        What's the weather like in Tokyo?
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Chat Container -->
         <div class="chat-container" id="chatContainer">
             <!-- Messages will be added here dynamically -->
@@ -19,12 +79,12 @@
                 <textarea
                     id="messageInput"
                     class="message-input"
-                    placeholder="Message Travel Agent..."
+                    placeholder="Ask about travel plans, weather, or flights..."
                     rows="1"
                     autofocus
                 ></textarea>
-                <button 
-                    id="sendBtn" 
+                <button
+                    id="sendBtn"
                     class="send-button"
                     onclick="sendMessage()"
                     disabled
@@ -34,9 +94,20 @@
                     </svg>
                 </button>
             </div>
+            <div class="input-hint">
+                <kbd>Enter</kbd> to send • <kbd>Shift + Enter</kbd> for new line
+            </div>
         </div>
     </div>
 
     <script src="/static/app_premium.js"></script>
+    <script>
+        function fillExample(button) {
+            const input = document.getElementById('messageInput');
+            input.value = button.textContent.trim();
+            input.focus();
+            input.dispatchEvent(new Event('input'));
+        }
+    </script>
 </body>
 </html>
