@@ -34,7 +34,7 @@ load_dotenv()
 # Initialize FastAPI app
 app = FastAPI(
     title="Travel Agent MVP API",
-    description="Travel planning agent with ReAct pattern and Google ADK",
+    description="Travel planning agent with ReAct pattern and OpenAI",
     version="1.0.0"
 )
 
@@ -62,8 +62,8 @@ def get_agent() -> TravelAgent:
     if agent is None:
         try:
             agent = TravelAgent(
-                api_key=os.getenv("GOOGLE_API_KEY"),
-                model_name=os.getenv("MODEL_NAME", "gemini-2.0-flash-exp"),
+                api_key=os.getenv("OPENAI_API_KEY"),
+                model_name=os.getenv("MODEL_NAME", "gpt-4o-mini"),
                 temperature=float(os.getenv("TEMPERATURE", "0.7")),
                 max_tokens=int(os.getenv("MAX_TOKENS", "2000"))
             )
@@ -129,8 +129,8 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "agent_status": agent_status,
         "environment": {
-            "google_api_key_set": bool(os.getenv("GOOGLE_API_KEY")),
-            "model_name": os.getenv("MODEL_NAME", "gemini-2.0-flash-exp")
+            "openai_api_key_set": bool(os.getenv("OPENAI_API_KEY")),
+            "model_name": os.getenv("MODEL_NAME", "gpt-4o-mini")
         }
     })
 
@@ -260,8 +260,8 @@ async def startup_event():
     print("🧳 Travel Agent MVP API Starting...")
     print("=" * 60)
     print(f"Environment:")
-    print(f"  - Google API Key: {'✓ Set' if os.getenv('GOOGLE_API_KEY') else '✗ Not set'}")
-    print(f"  - Model: {os.getenv('MODEL_NAME', 'gemini-2.0-flash-exp')}")
+    print(f"  - OpenAI API Key: {'✓ Set' if os.getenv('OPENAI_API_KEY') else '✗ Not set'}")
+    print(f"  - Model: {os.getenv('MODEL_NAME', 'gpt-4o-mini')}")
     print(f"  - Temperature: {os.getenv('TEMPERATURE', '0.7')}")
     print(f"  - Debug: {os.getenv('DEBUG', 'false')}")
     print("=" * 60)
@@ -272,7 +272,7 @@ async def startup_event():
         print("✓ Agent initialized successfully")
     except Exception as e:
         print(f"✗ Agent initialization failed: {e}")
-        print("  Make sure GOOGLE_API_KEY is set in .env file")
+        print("  Make sure OPENAI_API_KEY is set in .env file")
 
     print("=" * 60)
     print("Server is ready!")
