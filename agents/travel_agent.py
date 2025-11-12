@@ -1,12 +1,10 @@
 """
-Travel Agent with LangChain and ReAct Pattern.
+Travel Agent with LangChain and ReAct Pattern - FIXED VERSION.
 
-This agent helps users plan trips by:
-1. Getting weather information for destinations
-2. Searching for flights
-3. Providing travel recommendations
-
-Uses LangChain's built-in ReAct agent with streaming callbacks.
+Исправления:
+1. Улучшенный REACT_PROMPT с чёткими инструкциями
+2. Лучший error handling
+3. Примеры использования Final Answer
 """
 
 import os
@@ -40,64 +38,101 @@ load_dotenv()
 
 
 # ============================================================================
-# REACT PROMPT TEMPLATE
+# IMPROVED REACT PROMPT TEMPLATE
 # ============================================================================
 
 REACT_PROMPT = """Ты - профессиональный помощник по планированию путешествий (Travel Agent).
 
-Твоя роль:
-- Помогать пользователям планировать поездки
-- Получать информацию о погоде в городах назначения
-- Искать подходящие рейсы
-- Давать полезные рекомендации для путешественников
+КРИТИЧЕСКИ ВАЖНО: Ты МОЖЕШЬ использовать ТОЛЬКО эти инструменты:
+{tool_names}
 
-ВАЖНО: Ты используешь ReAct паттерн (Reasoning and Acting):
+НИКАКИХ других инструментов не существует!
 
-**ReAct Pattern Flow:**
+**Твои возможности:**
+1. get_weather_tool - узнать погоду в городе (параметр: city)
+2. search_flights_tool - найти рейсы между городами (параметры: from_city, to_city, date)
+3. Final Answer - дать ответ пользователю
 
-1. THINK (Размышление):
-   - Проанализируй запрос пользователя
-   - Определи, какую информацию нужно собрать
-   - Составь пошаговый план действий
+**ВАЖНОЕ ПРАВИЛО:**
+- Если тебе нужна информация от пользователя (город вылета, даты и т.д.) → сразу используй "Final Answer" и задай вопрос
+- НЕ пытайся придумать несуществующие инструменты!
+- НЕ пиши Action с текстом вроде "Ничего не делаю" или "Спрашиваю пользователя"
 
-2. ACT (Действие):
-   - Выполни ОДНО действие из плана
-   - Вызови соответствующий инструмент
-   - Подожди результата
+**Строгий формат ответа:**
 
-3. OBSERVE (Наблюдение):
-   - Проанализируй полученный результат
-   - Определи, достаточно ли информации
-   - Реши, нужны ли дополнительные действия
+Вариант 1 - Использование инструмента:
+```
+Thought: Мне нужно узнать погоду в Париже
+Action: get_weather_tool
+Action Input: {{"city": "Paris"}}
+```
 
-4. REPEAT (Повтор):
-   - Если нужно больше информации - повтори цикл
-   - Если информации достаточно - переходи к финальному ответу
+Вариант 2 - Нужна информация от пользователя:
+```
+Thought: Мне нужна дополнительная информация от пользователя
+Final Answer: Из какого города вы планируете вылететь и на какие даты?
+```
 
-**Правила:**
-- Делай шаги последовательно, НЕ вызывай все функции сразу
-- Если информации недостаточно - спрашивай у пользователя
-- Всегда объясняй свои рассуждения
-- Будь дружелюбным и полезным
-- Отвечай на русском языке (но города называй по-английски для API)
-- Давай конкретные рекомендации на основе полученных данных
+Вариант 3 - Готов дать полный ответ:
+```
+Thought: Теперь у меня есть вся информация для ответа
+Final Answer: [Подробный ответ с рекомендациями]
+```
+
+**Примеры:**
+
+Пример 1 - Нужна доп. информация:
+Вопрос: Спланируй поездку в Берлин на выходные
+```
+Thought: Чтобы спланировать поездку, мне нужно знать город вылета и точные даты. Сначала узнаю погоду в Берлине.
+Action: get_weather_tool
+Action Input: {{"city": "Berlin"}}
+Observation: {{"success": true, "temperature_c": "18", "description": "Clear"}}
+Thought: Погода хорошая (18°C, ясно). Теперь нужна информация от пользователя о городе вылета и датах.
+Final Answer: В Берлине отличная погода - 18°C и ясно! 🌤️ 
+
+Чтобы найти подходящие рейсы, уточните, пожалуйста:
+• Из какого города вы планируете вылететь?
+• На какие конкретно даты? (например, 15-17 января)
+```
+
+Пример 2 - Вся информация есть:
+Вопрос: Найди рейсы из Москвы в Париж на 15 января
+```
+Thought: У меня есть все данные: город вылета (Moscow), город прилёта (Paris), дата (2025-01-15). Сначала узнаю погоду в Париже, потом найду рейсы.
+Action: get_weather_tool
+Action Input: {{"city": "Paris"}}
+Observation: {{"success": true, "temperature_c": "12", "description": "Cloudy"}}
+Thought: Погода в Париже 12°C, облачно. Теперь найду рейсы.
+Action: search_flights_tool
+Action Input: {{"from_city": "Moscow", "to_city": "Paris", "date": "2025-01-15"}}
+Observation: {{"success": true, "flights": [...]}}
+Thought: Отлично, есть рейсы. Могу дать полный ответ.
+Final Answer: ✈️ Нашёл рейсы из Москвы в Париж на 15 января:
+
+🌤️ Погода в Париже: 12°C, облачно
+
+Рейсы:
+• [детали рейсов из observation]
+
+Рекомендую взять лёгкую куртку - в Париже прохладно!
+```
+
+Пример 3 - Только погода:
+Вопрос: Какая погода в Токио?
+```
+Thought: Это простой вопрос о погоде. Использую get_weather_tool.
+Action: get_weather_tool
+Action Input: {{"city": "Tokyo"}}
+Observation: {{"success": true, "temperature_c": "22", "description": "Sunny"}}
+Thought: Получил данные о погоде, могу ответить.
+Final Answer: В Токио сейчас 22°C, солнечно ☀️ Отличная погода для прогулок!
+```
 
 Доступные инструменты:
 {tools}
 
-Названия инструментов: {tool_names}
-
-Используй следующий формат:
-
-Thought: [твои размышления о том, что нужно сделать]
-Action: [название инструмента из списка выше]
-Action Input: [входные данные для инструмента в формате JSON]
-Observation: [результат выполнения инструмента]
-... (повторяй Thought/Action/Action Input/Observation сколько нужно)
-Thought: Теперь у меня есь вся необходимая информация для ответа
-Final Answer: [подробный и полезный ответ пользователю на русском языке]
-
-Начинай!
+НАЧИНАЙ! Следуй формату строго. Используй Final Answer когда нужна информация от пользователя ИЛИ когда готов дать полный ответ.
 
 Вопрос пользователя: {input}
 
@@ -109,31 +144,14 @@ Final Answer: [подробный и полезный ответ пользов�
 # ============================================================================
 
 class TravelAgentStreamingCallback(AsyncCallbackHandler):
-    """
-    Async callback handler для streaming шагов агента в SSE формате.
-
-    Генерирует события:
-    - act: когда агент вызывает инструмент
-    - observe: когда инструмент возвращает результат
-    - done: когда агент завершил работу
-    - error: при ошибках
-    """
+    """Async callback handler для streaming шагов агента в SSE формате."""
 
     def __init__(self, queue: asyncio.Queue):
-        """
-        Args:
-            queue: Asyncio Queue для передачи событий
-        """
         self.queue = queue
         logger.info("TravelAgentStreamingCallback initialized")
 
     async def on_agent_action(self, action, **kwargs):
-        """
-        Вызывается когда агент решает вызвать инструмент.
-
-        Args:
-            action: AgentAction объект с информацией о вызове
-        """
+        """Вызывается когда агент решает вызвать инструмент."""
         logger.info(f"Agent action: {action.tool}")
 
         await self.queue.put({
@@ -147,12 +165,7 @@ class TravelAgentStreamingCallback(AsyncCallbackHandler):
         })
 
     async def on_tool_end(self, output: str, **kwargs):
-        """
-        Вызывается когда инструмент возвращает результат.
-
-        Args:
-            output: Результат выполнения инструмента (JSON строка)
-        """
+        """Вызывается когда инструмент возвращает результат."""
         logger.info("Tool execution completed")
 
         # Парсим JSON результат для metadata
@@ -176,12 +189,7 @@ class TravelAgentStreamingCallback(AsyncCallbackHandler):
         })
 
     async def on_agent_finish(self, finish, **kwargs):
-        """
-        Вызывается когда агент закончил работу и готов дать финальный ответ.
-
-        Args:
-            finish: AgentFinish объект с финальным ответом
-        """
+        """Вызывается когда агент закончил работу."""
         logger.info("Agent finished successfully")
 
         final_output = finish.return_values.get("output", "Ответ получен")
@@ -194,12 +202,7 @@ class TravelAgentStreamingCallback(AsyncCallbackHandler):
         })
 
     async def on_chain_error(self, error: Exception, **kwargs):
-        """
-        Вызывается при ошибке в chain/agent.
-
-        Args:
-            error: Exception объект
-        """
+        """Вызывается при ошибке в chain/agent."""
         logger.error(f"Chain error: {error}", exc_info=True)
 
         await self.queue.put({
@@ -218,15 +221,7 @@ class TravelAgentStreamingCallback(AsyncCallbackHandler):
 # ============================================================================
 
 class TravelAgent:
-    """
-    Travel Agent using LangChain with ReAct pattern.
-
-    Features:
-    - Built-in ReAct agent with create_react_agent()
-    - ConversationSummaryBufferMemory for session management
-    - Async streaming callbacks for SSE
-    - Proper error handling
-    """
+    """Travel Agent using LangChain with ReAct pattern."""
 
     def __init__(
         self,
@@ -235,15 +230,7 @@ class TravelAgent:
         temperature: float = 0.7,
         max_tokens: int = 2000
     ):
-        """
-        Initialize the Travel Agent.
-
-        Args:
-            api_key: OpenAI API key (если None, берется из env OPENAI_API_KEY)
-            model_name: Model name to use
-            temperature: Model temperature (0.0-1.0)
-            max_tokens: Maximum tokens in response
-        """
+        """Initialize the Travel Agent."""
         logger.info("=== Initializing TravelAgent (LangChain) ===")
 
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
@@ -263,7 +250,7 @@ class TravelAgent:
                 model=model_name,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                streaming=True,  # Enable streaming
+                streaming=True,
                 api_key=self.api_key
             )
             logger.info("ChatOpenAI initialized successfully")
@@ -296,26 +283,13 @@ class TravelAgent:
         logger.info("TravelAgent initialization complete")
 
     def _get_memory(self, session_id: str) -> ConversationSummaryBufferMemory:
-        """
-        Get or create memory for a session.
-
-        Uses ConversationSummaryBufferMemory which:
-        - Keeps recent messages in buffer
-        - Summarizes older messages to save tokens
-        - Balances context and token usage
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            ConversationSummaryBufferMemory instance
-        """
+        """Get or create memory for a session."""
         if session_id not in self.memories:
             logger.info(f"Creating new memory for session: {session_id}")
 
             self.memories[session_id] = ConversationSummaryBufferMemory(
                 llm=self.llm,
-                max_token_limit=1000,  # Summarize when exceeds
+                max_token_limit=1000,
                 memory_key="chat_history",
                 return_messages=True,
                 input_key="input",
@@ -329,22 +303,7 @@ class TravelAgent:
         user_query: str,
         session_id: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """
-        Run the agent with streaming ReAct loop.
-
-        Args:
-            user_query: User's question or request
-            session_id: Optional session ID for memory
-
-        Yields:
-            Step dictionaries with ReAct loop progress:
-            {
-                "step_type": "start" | "act" | "observe" | "done" | "error",
-                "content": "step content",
-                "timestamp": "ISO timestamp",
-                "metadata": {...}
-            }
-        """
+        """Run the agent with streaming ReAct loop."""
         session_id = session_id or f"session_{datetime.now().timestamp()}"
 
         logger.info(f"=== Starting agent run for session: {session_id} ===")
@@ -366,15 +325,16 @@ class TravelAgent:
         # Get memory for session
         memory = self._get_memory(session_id)
 
-        # Create agent executor
+        # Create agent executor with better error handling
         executor = AgentExecutor(
             agent=self.agent,
             tools=self.tools,
             memory=memory,
             verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=10,
-            return_intermediate_steps=True
+            handle_parsing_errors=True,  # Обрабатывает ошибки парсинга
+            max_iterations=15,  # Увеличил лимит итераций
+            return_intermediate_steps=True,
+            early_stopping_method="generate"  # Остановка при Final Answer
         )
 
         logger.info("AgentExecutor created, starting execution...")
@@ -435,7 +395,7 @@ if __name__ == "__main__":
         print("Testing Travel Agent with LangChain ReAct pattern...\n")
 
         # Test query
-        query = "Какая погода в Париже?"
+        query = "Спланируй поездку в Берлин на выходные"
 
         print(f"User: {query}\n")
 
