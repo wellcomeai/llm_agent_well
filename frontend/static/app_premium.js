@@ -1,6 +1,6 @@
 /**
  * Travel Agent V2 - Plan-and-Execute Premium Interface
- * Clean, minimal, world-class UX
+ * Version: 2.3.0 - Russian UI with integrated Thinking Block
  */
 
 // ============================================================================
@@ -10,7 +10,7 @@ let currentEventSource = null;
 let sessionId = null;
 let currentThinkingBlock = null;
 let currentAssistantMessage = null;
-let currentPlanBlock = null;
+let currentPlanSection = null;
 
 // ============================================================================
 // INITIALIZATION
@@ -112,7 +112,7 @@ function addUserMessage(text) {
     const messageEl = document.createElement('div');
     messageEl.className = 'message user';
     messageEl.innerHTML = `
-        <div class="message-avatar">You</div>
+        <div class="message-avatar">Вы</div>
         <div class="message-content">
             <div class="message-text">${escapeHtml(text)}</div>
         </div>
@@ -130,7 +130,7 @@ function addAssistantMessage() {
     messageEl.innerHTML = `
         <div class="message-avatar">AI</div>
         <div class="message-content">
-            <!-- Plan, thinking, and answer will be added here -->
+            <!-- Thinking block, plan, and answer will be added here -->
         </div>
     `;
 
@@ -141,143 +141,10 @@ function addAssistantMessage() {
     return messageEl;
 }
 
-function addTypingIndicator() {
-    if (!currentAssistantMessage) {
-        addAssistantMessage();
-    }
-
-    const content = currentAssistantMessage.querySelector('.message-content');
-
-    const typingEl = document.createElement('div');
-    typingEl.className = 'typing-indicator';
-    typingEl.innerHTML = `
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-    `;
-
-    content.appendChild(typingEl);
-    scrollToBottom();
-
-    return typingEl;
-}
-
-function removeTypingIndicator() {
-    const typing = currentAssistantMessage?.querySelector('.typing-indicator');
-    if (typing) {
-        typing.remove();
-    }
-}
-
-// ============================================================================
-// PLAN BLOCK (Plan-and-Execute V2)
-// ============================================================================
-function createPlanBlock(planData) {
-    if (!currentAssistantMessage) {
-        addAssistantMessage();
-    }
-
-    removeTypingIndicator();
-
-    const content = currentAssistantMessage.querySelector('.message-content');
-
-    const planEl = document.createElement('div');
-    planEl.className = 'plan-block';
-
-    const stepsList = planData.steps.map((step, idx) => {
-        const parallelIcon = step.can_parallel ? '⚡' : '➡️';
-        const depsText = step.depends_on.length > 0 ? ` (depends on: ${step.depends_on.join(', ')})` : '';
-
-        return `
-            <div class="plan-step" data-step-id="${step.id}">
-                <div class="plan-step-header">
-                    <span class="plan-step-icon">${parallelIcon}</span>
-                    <span class="plan-step-number">${step.id}.</span>
-                    <span class="plan-step-description">${escapeHtml(step.description)}</span>
-                </div>
-                <div class="plan-step-meta">
-                    <span class="plan-step-action">Action: ${step.action}</span>
-                    <span class="plan-step-time">~${step.estimated_time}s</span>
-                    ${depsText ? `<span class="plan-step-deps">${depsText}</span>` : ''}
-                </div>
-                <div class="plan-step-status">⏳ Pending</div>
-            </div>
-        `;
-    }).join('');
-
-    planEl.innerHTML = `
-        <div class="plan-header" onclick="togglePlan(this)">
-            <div class="plan-title">
-                <svg class="plan-icon" viewBox="0 0 24 24" fill="none">
-                    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="currentColor" stroke-width="2"/>
-                    <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                <span>Plan: ${escapeHtml(planData.goal)}</span>
-            </div>
-            <span class="plan-meta">${planData.steps.length} steps, ~${planData.total_estimated_time}s</span>
-            <svg class="plan-chevron" viewBox="0 0 24 24" fill="none">
-                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </div>
-        <div class="plan-content">
-            <div class="plan-steps">${stepsList}</div>
-        </div>
-    `;
-
-    content.appendChild(planEl);
-    currentPlanBlock = planEl;
-    scrollToBottom();
-
-    return planEl;
-}
-
-function updateStepStatus(stepId, status, data = null) {
-    if (!currentPlanBlock) return;
-
-    const stepEl = currentPlanBlock.querySelector(`.plan-step[data-step-id="${stepId}"]`);
-    if (!stepEl) return;
-
-    const statusEl = stepEl.querySelector('.plan-step-status');
-
-    if (status === 'running') {
-        statusEl.innerHTML = '▶️ Running...';
-        statusEl.className = 'plan-step-status running';
-        stepEl.classList.add('active');
-    } else if (status === 'completed') {
-        const time = data?.execution_time ? ` (${data.execution_time.toFixed(1)}s)` : '';
-        statusEl.innerHTML = `✅ Completed${time}`;
-        statusEl.className = 'plan-step-status completed';
-        stepEl.classList.remove('active');
-        stepEl.classList.add('completed');
-    } else if (status === 'failed') {
-        const error = data?.error ? `: ${data.error.substring(0, 50)}...` : '';
-        statusEl.innerHTML = `❌ Failed${error}`;
-        statusEl.className = 'plan-step-status failed';
-        stepEl.classList.remove('active');
-        stepEl.classList.add('failed');
-    }
-
-    scrollToBottom();
-}
-
-function togglePlan(header) {
-    const planBlock = header.closest('.plan-block');
-    const content = planBlock.querySelector('.plan-content');
-    const chevron = planBlock.querySelector('.plan-chevron');
-
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        chevron.style.transform = 'rotate(0deg)';
-    } else {
-        content.style.display = 'none';
-        chevron.style.transform = 'rotate(-90deg)';
-    }
-}
-
 // ============================================================================
 // THINKING BLOCK
 // ============================================================================
-function createThinkingBlock(title = 'Processing...') {
+function createThinkingBlock(title = 'Обработка') {
     if (!currentAssistantMessage) {
         addAssistantMessage();
     }
@@ -285,7 +152,7 @@ function createThinkingBlock(title = 'Processing...') {
     const content = currentAssistantMessage.querySelector('.message-content');
 
     const thinkingEl = document.createElement('div');
-    thinkingEl.className = 'thinking-block';
+    thinkingEl.className = 'thinking-block collapsed';
     thinkingEl.innerHTML = `
         <div class="thinking-header" onclick="toggleThinking(this)">
             <div class="thinking-title">
@@ -295,6 +162,7 @@ function createThinkingBlock(title = 'Processing...') {
                 </svg>
                 <span>${title}</span>
             </div>
+            <span class="thinking-meta"></span>
             <svg class="thinking-chevron" viewBox="0 0 24 24" fill="none">
                 <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -339,33 +207,124 @@ function finishThinking() {
 
     const title = currentThinkingBlock.querySelector('.thinking-title span');
     if (title) {
-        title.textContent = 'Complete';
+        title.textContent = 'Завершено';
     }
 }
 
 function toggleThinking(header) {
     const thinkingBlock = header.closest('.thinking-block');
-    const content = thinkingBlock.querySelector('.thinking-content');
-    const chevron = thinkingBlock.querySelector('.thinking-chevron');
-
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        chevron.style.transform = 'rotate(0deg)';
-    } else {
-        content.style.display = 'none';
-        chevron.style.transform = 'rotate(-90deg)';
-    }
+    thinkingBlock.classList.toggle('collapsed');
 }
 
 function getStepLabel(stepType) {
     const labels = {
-        'routing': '🔀 Routing:',
-        'planning': '📋 Planning:',
-        'execution': '⚙️ Executing:',
-        'reflection': '🔍 Reflecting:',
-        'replan': '🔄 Replanning:'
+        'routing': '🔀 Маршрутизация:',
+        'planning': '📋 Планирование:',
+        'execution': '⚙️ Выполнение:',
+        'reflection': '🔍 Анализ:',
+        'replan': '🔄 Перепланирование:'
     };
-    return labels[stepType] || 'Step:';
+    return labels[stepType] || 'Шаг:';
+}
+
+// ============================================================================
+// PLAN SECTION - Inside Thinking Block
+// ============================================================================
+function createPlanSection(planData) {
+    if (!currentThinkingBlock) return;
+
+    const thinkingContent = currentThinkingBlock.querySelector('.thinking-content');
+
+    const planEl = document.createElement('div');
+    planEl.className = 'plan-section';
+
+    const stepsList = planData.steps.map((step, idx) => {
+        const parallelIcon = step.can_parallel ? '⚡' : '➡️';
+        const depsText = step.depends_on.length > 0 ? ` (зависит от: ${step.depends_on.join(', ')})` : '';
+
+        return `
+            <div class="plan-step" data-step-id="${step.id}">
+                <div class="plan-step-header">
+                    <span class="plan-step-icon">${parallelIcon}</span>
+                    <span class="plan-step-number">${step.id}.</span>
+                    <span class="plan-step-description">${escapeHtml(step.description)}</span>
+                </div>
+                <div class="plan-step-meta">
+                    <span class="plan-step-action">${step.action}</span>
+                    <span class="plan-step-time">~${step.estimated_time} сек</span>
+                    ${depsText ? `<span class="plan-step-deps">${depsText}</span>` : ''}
+                </div>
+                <div class="plan-step-status">⏳ Ожидает</div>
+            </div>
+        `;
+    }).join('');
+
+    planEl.innerHTML = `
+        <div class="plan-section-title">
+            <svg viewBox="0 0 24 24" fill="none">
+                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="currentColor" stroke-width="2"/>
+                <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span>${escapeHtml(planData.goal)}</span>
+            <span class="plan-section-meta">~${planData.total_estimated_time} сек</span>
+        </div>
+        <div class="plan-steps">${stepsList}</div>
+    `;
+
+    thinkingContent.appendChild(planEl);
+    currentPlanSection = planEl;
+    scrollToBottom();
+
+    // Обновить meta в thinking header
+    updateThinkingMeta(planData.steps.length);
+
+    return planEl;
+}
+
+function updateThinkingMeta(stepCount) {
+    if (!currentThinkingBlock) return;
+
+    const meta = currentThinkingBlock.querySelector('.thinking-meta');
+    if (meta) {
+        let stepWord = 'шагов';
+        if (stepCount === 1) stepWord = 'шаг';
+        else if (stepCount >= 2 && stepCount <= 4) stepWord = 'шага';
+
+        meta.textContent = `${stepCount} ${stepWord}`;
+    }
+}
+
+function updateStepStatus(stepId, status, data = null) {
+    // Ищем plan-section внутри currentThinkingBlock
+    if (!currentThinkingBlock) return;
+
+    const planSection = currentThinkingBlock.querySelector('.plan-section');
+    if (!planSection) return;
+
+    const stepEl = planSection.querySelector(`.plan-step[data-step-id="${stepId}"]`);
+    if (!stepEl) return;
+
+    const statusEl = stepEl.querySelector('.plan-step-status');
+
+    if (status === 'running') {
+        statusEl.innerHTML = '▶️ Выполняется...';
+        statusEl.className = 'plan-step-status running';
+        stepEl.classList.add('active');
+    } else if (status === 'completed') {
+        const time = data?.execution_time ? ` (${data.execution_time.toFixed(1)} сек)` : '';
+        statusEl.innerHTML = `✅ Завершено${time}`;
+        statusEl.className = 'plan-step-status completed';
+        stepEl.classList.remove('active');
+        stepEl.classList.add('completed');
+    } else if (status === 'failed') {
+        const error = data?.error ? `: ${data.error.substring(0, 50)}...` : '';
+        statusEl.innerHTML = `❌ Не удалось${error}`;
+        statusEl.className = 'plan-step-status failed';
+        stepEl.classList.remove('active');
+        stepEl.classList.add('failed');
+    }
+
+    scrollToBottom();
 }
 
 // ============================================================================
@@ -375,8 +334,6 @@ function addFinalAnswer(text) {
     if (!currentAssistantMessage) {
         addAssistantMessage();
     }
-
-    removeTypingIndicator();
 
     const content = currentAssistantMessage.querySelector('.message-content');
 
@@ -405,7 +362,7 @@ function startStreaming(query) {
     // Reset state
     currentThinkingBlock = null;
     currentAssistantMessage = null;
-    currentPlanBlock = null;
+    currentPlanSection = null;
 
     // Create URL
     const url = `/api/stream?q=${encodeURIComponent(query)}&session_id=${encodeURIComponent(sessionId)}`;
@@ -415,7 +372,7 @@ function startStreaming(query) {
         setupSSEListeners(currentEventSource);
     } catch (error) {
         console.error('Error creating EventSource:', error);
-        addErrorMessage('Failed to connect to server');
+        addErrorMessage('Не удалось подключиться к серверу');
         setInputEnabled(true);
     }
 }
@@ -424,18 +381,17 @@ function setupSSEListeners(eventSource) {
     // Start event
     eventSource.addEventListener('start', (event) => {
         console.log('Agent started (Plan-and-Execute)');
-        addTypingIndicator();
     });
 
     // Routing events
     eventSource.addEventListener('routing_start', (event) => {
-        createThinkingBlock('Routing query...');
-        addThinkingStep('routing', 'Analyzing query type...');
+        createThinkingBlock('Обработка');
+        addThinkingStep('routing', 'Анализирую тип запроса...');
     });
 
     eventSource.addEventListener('routing_complete', (event) => {
         const data = JSON.parse(event.data);
-        addThinkingStep('routing', `Route: ${data.route_type} (confidence: ${(data.confidence * 100).toFixed(0)}%)`);
+        addThinkingStep('routing', `Маршрут: ${data.route_type} (уверенность: ${(data.confidence * 100).toFixed(0)}%)`);
     });
 
     // Simple answer (no agent needed)
@@ -450,16 +406,12 @@ function setupSSEListeners(eventSource) {
 
     // Planning events
     eventSource.addEventListener('planning_start', (event) => {
-        removeTypingIndicator();
-        createThinkingBlock('Creating plan...');
-        addThinkingStep('planning', 'Analyzing task and creating execution plan...');
+        addThinkingStep('planning', 'Анализирую задачу и создаю план выполнения...');
     });
 
     eventSource.addEventListener('plan_created', (event) => {
         const data = JSON.parse(event.data);
-        removeTypingIndicator();
-        finishThinking();
-        createPlanBlock(data);
+        createPlanSection(data);
     });
 
     // Execution events
@@ -501,7 +453,6 @@ function setupSSEListeners(eventSource) {
     // Replan event
     eventSource.addEventListener('replan', (event) => {
         const data = JSON.parse(event.data);
-        createThinkingBlock('Replanning...');
         addThinkingStep('replan', data.reason);
     });
 
@@ -509,7 +460,7 @@ function setupSSEListeners(eventSource) {
     eventSource.addEventListener('needs_user_input', (event) => {
         const data = JSON.parse(event.data);
         const questions = data.questions.join('\n• ');
-        addFinalAnswer(`I need more information:\n\n• ${questions}`);
+        addFinalAnswer(`Мне нужна дополнительная информация:\n\n• ${questions}`);
 
         eventSource.close();
         currentEventSource = null;
@@ -526,6 +477,9 @@ function setupSSEListeners(eventSource) {
     eventSource.addEventListener('done', (event) => {
         console.log('Processing complete');
 
+        // Финализировать thinking block
+        finishThinking();
+
         // Cleanup
         eventSource.close();
         currentEventSource = null;
@@ -539,15 +493,15 @@ function setupSSEListeners(eventSource) {
         if (event.data) {
             try {
                 const data = JSON.parse(event.data);
-                addErrorMessage(data.error || 'An error occurred');
+                addErrorMessage(data.error || 'Произошла ошибка');
             } catch (e) {
-                addErrorMessage('An error occurred');
+                addErrorMessage('Произошла ошибка');
             }
         } else {
             if (eventSource.readyState === EventSource.CLOSED) {
                 console.log('SSE connection closed');
             } else {
-                addErrorMessage('Lost connection to server');
+                addErrorMessage('Потеряно соединение с сервером');
             }
         }
 
@@ -566,14 +520,12 @@ function addErrorMessage(text) {
         addAssistantMessage();
     }
 
-    removeTypingIndicator();
-
     const content = currentAssistantMessage.querySelector('.message-content');
 
     const errorEl = document.createElement('div');
     errorEl.className = 'message-text error';
     errorEl.style.color = '#ef4444';
-    errorEl.textContent = `Error: ${text}`;
+    errorEl.textContent = `Ошибка: ${text}`;
 
     content.appendChild(errorEl);
     scrollToBottom();

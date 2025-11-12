@@ -428,106 +428,70 @@ body {
 }
 
 /* ============================================================================
-   PLAN BLOCK - Enhanced Design
+   PLAN SECTION - Внутри Thinking Block
    ========================================================================= */
-.plan-block {
-    background: var(--bg-secondary);
+.plan-section {
+    background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
-    margin: var(--space-4) 0;
-    overflow: hidden;
-    box-shadow: var(--shadow-xs);
+    padding: var(--space-4);
+    margin-top: var(--space-4);
 }
 
-.plan-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-4) var(--space-5);
-    cursor: pointer;
-    user-select: none;
-    transition: background var(--transition-fast);
-}
-
-.plan-header:hover {
-    background: var(--bg-hover);
-}
-
-.plan-title {
+.plan-section-title {
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    flex: 1;
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.plan-section-title svg {
+    width: 18px;
+    height: 18px;
+    color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.plan-section-title span {
     font-weight: 600;
     font-size: var(--text-base);
     color: var(--text-primary);
 }
 
-.plan-icon {
-    width: 20px;
-    height: 20px;
-    color: var(--accent-primary);
-    flex-shrink: 0;
-}
-
-.plan-meta {
+.plan-section-meta {
     font-size: var(--text-sm);
     color: var(--text-tertiary);
-    white-space: nowrap;
+    margin-left: auto;
 }
 
-.plan-chevron {
-    width: 20px;
-    height: 20px;
-    color: var(--text-tertiary);
-    flex-shrink: 0;
-    transition: transform var(--transition-base);
-}
-
-.plan-block.collapsed .plan-chevron {
-    transform: rotate(-90deg);
-}
-
-.plan-content {
-    border-top: 1px solid var(--border-color);
-    padding: var(--space-4) var(--space-5);
-    max-height: 600px;
-    overflow: hidden;
-    transition: max-height var(--transition-slow);
-}
-
-.plan-block.collapsed .plan-content {
-    max-height: 0;
-    padding: 0 var(--space-5);
-}
-
-.plan-steps {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-}
-
-/* Plan Step */
-.plan-step {
-    background: var(--bg-primary);
+/* Plan Steps */
+.plan-section .plan-step {
+    background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: var(--space-4);
+    margin-bottom: var(--space-3);
     transition: all var(--transition-fast);
 }
 
-.plan-step.active {
+.plan-section .plan-step:last-child {
+    margin-bottom: 0;
+}
+
+.plan-section .plan-step.active {
     border-color: var(--accent-primary);
     background: var(--accent-light);
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
 }
 
-.plan-step.completed {
+.plan-section .plan-step.completed {
     opacity: 0.7;
     border-color: var(--success);
 }
 
-.plan-step.failed {
+.plan-section .plan-step.failed {
     border-color: var(--error);
     background: var(--error-light);
 }
@@ -604,28 +568,105 @@ body {
 }
 
 /* ============================================================================
-   TYPING INDICATOR
+   THINKING BLOCK
    ========================================================================= */
-.typing-indicator {
+.thinking-block {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    margin: var(--space-4) 0;
+    overflow: hidden;
+    box-shadow: var(--shadow-xs);
+}
+
+.thinking-header {
     display: flex;
-    gap: 6px;
-    padding: var(--space-4) 0;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast);
 }
 
-.typing-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: var(--radius-full);
-    background: var(--text-tertiary);
-    animation: typing 1.4s infinite;
+.thinking-header:hover {
+    background: var(--bg-hover);
 }
 
-.typing-dot:nth-child(2) {
-    animation-delay: 0.2s;
+.thinking-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1;
+    font-weight: 600;
+    font-size: var(--text-base);
+    color: var(--text-primary);
 }
 
-.typing-dot:nth-child(3) {
-    animation-delay: 0.4s;
+.thinking-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.thinking-icon.spinning {
+    animation: spin 1s linear infinite;
+}
+
+.thinking-meta {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.thinking-chevron {
+    width: 20px;
+    height: 20px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    transition: transform var(--transition-base);
+}
+
+.thinking-block.collapsed .thinking-chevron {
+    transform: rotate(-90deg);
+}
+
+.thinking-content {
+    border-top: 1px solid var(--border-color);
+    padding: var(--space-4) var(--space-5);
+    max-height: 800px;
+    overflow: hidden;
+    transition: max-height var(--transition-slow), padding var(--transition-slow);
+}
+
+.thinking-block.collapsed .thinking-content {
+    max-height: 0;
+    padding: 0 var(--space-5);
+}
+
+.thinking-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+}
+
+.thinking-step {
+    padding: var(--space-2) 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.thinking-step-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-1);
+}
+
+.thinking-step-text {
+    color: var(--text-secondary);
 }
 
 /* ============================================================================
@@ -852,15 +893,11 @@ body {
         gap: var(--space-3);
     }
 
-    .plan-header {
-        padding: var(--space-3) var(--space-4);
+    .plan-section {
+        padding: var(--space-3);
     }
 
-    .plan-content {
-        padding: var(--space-3) var(--space-4);
-    }
-
-    .plan-step {
+    .plan-section .plan-step {
         padding: var(--space-3);
     }
 
@@ -868,6 +905,14 @@ body {
         flex-direction: column;
         align-items: flex-start;
         gap: var(--space-2);
+    }
+
+    .thinking-header {
+        padding: var(--space-3) var(--space-4);
+    }
+
+    .thinking-content {
+        padding: var(--space-3) var(--space-4);
     }
 }
 
