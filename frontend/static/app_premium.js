@@ -1,6 +1,13 @@
 /**
  * Travel Agent V2 - Plan-and-Execute Premium Interface
- * Version: 2.3.0 - Russian UI with integrated Thinking Block
+ * Clean, minimal, production-ready
+ * Version: 2.3.0 - Final
+ * 
+ * Изменения:
+ * - Удален typing indicator (избыточен)
+ * - План интегрирован внутрь Thinking Block
+ * - Весь интерфейс на русском языке
+ * - Thinking Block свернут по умолчанию
  */
 
 // ============================================================================
@@ -142,7 +149,7 @@ function addAssistantMessage() {
 }
 
 // ============================================================================
-// THINKING BLOCK
+// THINKING BLOCK - Единый блок для всего процесса (план внутри)
 // ============================================================================
 function createThinkingBlock(title = 'Обработка') {
     if (!currentAssistantMessage) {
@@ -152,7 +159,8 @@ function createThinkingBlock(title = 'Обработка') {
     const content = currentAssistantMessage.querySelector('.message-content');
 
     const thinkingEl = document.createElement('div');
-    thinkingEl.className = 'thinking-block collapsed';
+    thinkingEl.className = 'thinking-block collapsed'; // Свернут по умолчанию
+
     thinkingEl.innerHTML = `
         <div class="thinking-header" onclick="toggleThinking(this)">
             <div class="thinking-title">
@@ -187,7 +195,7 @@ function addThinkingStep(type, content) {
     const stepsContainer = currentThinkingBlock.querySelector('.thinking-steps');
 
     const stepEl = document.createElement('div');
-    stepEl.className = `thinking-step thinking-step-${type}`;
+    stepEl.className = 'thinking-step';
     stepEl.innerHTML = `
         <div class="thinking-step-label">${getStepLabel(type)}</div>
         <div class="thinking-step-text">${escapeHtml(content)}</div>
@@ -227,8 +235,23 @@ function getStepLabel(stepType) {
     return labels[stepType] || 'Шаг:';
 }
 
+function updateThinkingMeta(stepCount) {
+    if (!currentThinkingBlock) return;
+    
+    const meta = currentThinkingBlock.querySelector('.thinking-meta');
+    if (meta) {
+        let label = 'шагов';
+        if (stepCount === 1) {
+            label = 'шаг';
+        } else if (stepCount > 1 && stepCount < 5) {
+            label = 'шага';
+        }
+        meta.textContent = `${stepCount} ${label}`;
+    }
+}
+
 // ============================================================================
-// PLAN SECTION - Inside Thinking Block
+// PLAN SECTION - Внутри Thinking Block
 // ============================================================================
 function createPlanSection(planData) {
     if (!currentThinkingBlock) return;
@@ -238,9 +261,11 @@ function createPlanSection(planData) {
     const planEl = document.createElement('div');
     planEl.className = 'plan-section';
 
-    const stepsList = planData.steps.map((step, idx) => {
+    const stepsList = planData.steps.map((step) => {
         const parallelIcon = step.can_parallel ? '⚡' : '➡️';
-        const depsText = step.depends_on.length > 0 ? ` (зависит от: ${step.depends_on.join(', ')})` : '';
+        const depsText = step.depends_on && step.depends_on.length > 0 
+            ? ` (зависит от: ${step.depends_on.join(', ')})` 
+            : '';
 
         return `
             <div class="plan-step" data-step-id="${step.id}">
@@ -250,7 +275,7 @@ function createPlanSection(planData) {
                     <span class="plan-step-description">${escapeHtml(step.description)}</span>
                 </div>
                 <div class="plan-step-meta">
-                    <span class="plan-step-action">${step.action}</span>
+                    <span class="plan-step-action">${escapeHtml(step.action)}</span>
                     <span class="plan-step-time">~${step.estimated_time} сек</span>
                     ${depsText ? `<span class="plan-step-deps">${depsText}</span>` : ''}
                 </div>
@@ -279,19 +304,6 @@ function createPlanSection(planData) {
     updateThinkingMeta(planData.steps.length);
 
     return planEl;
-}
-
-function updateThinkingMeta(stepCount) {
-    if (!currentThinkingBlock) return;
-
-    const meta = currentThinkingBlock.querySelector('.thinking-meta');
-    if (meta) {
-        let stepWord = 'шагов';
-        if (stepCount === 1) stepWord = 'шаг';
-        else if (stepCount >= 2 && stepCount <= 4) stepWord = 'шага';
-
-        meta.textContent = `${stepCount} ${stepWord}`;
-    }
 }
 
 function updateStepStatus(stepId, status, data = null) {
@@ -381,6 +393,7 @@ function setupSSEListeners(eventSource) {
     // Start event
     eventSource.addEventListener('start', (event) => {
         console.log('Agent started (Plan-and-Execute)');
+        // Не добавляем typing indicator - он удален
     });
 
     // Routing events
@@ -391,7 +404,8 @@ function setupSSEListeners(eventSource) {
 
     eventSource.addEventListener('routing_complete', (event) => {
         const data = JSON.parse(event.data);
-        addThinkingStep('routing', `Маршрут: ${data.route_type} (уверенность: ${(data.confidence * 100).toFixed(0)}%)`);
+        const confidence = (data.confidence * 100).toFixed(0);
+        addThinkingStep('routing', `Маршрут: ${data.route_type} (уверенность: ${confidence}%)`);
     });
 
     // Simple answer (no agent needed)
@@ -443,17 +457,23 @@ function setupSSEListeners(eventSource) {
     // Reflection events
     eventSource.addEventListener('reflection_start', (event) => {
         console.log('Reflection started');
+        addThinkingStep('reflection', 'Анализирую результаты выполнения...');
     });
 
     eventSource.addEventListener('reflection_complete', (event) => {
         const data = JSON.parse(event.data);
         console.log('Reflection:', data.status);
+        if (data.status === 'success') {
+            addThinkingStep('reflection', 'Все задачи выполнены успешно');
+        } else if (data.status === 'needs_replan') {
+            addThinkingStep('reflection', 'Требуется перепланирование');
+        }
     });
 
     // Replan event
     eventSource.addEventListener('replan', (event) => {
         const data = JSON.parse(event.data);
-        addThinkingStep('replan', data.reason);
+        addThinkingStep('replan', data.reason || 'Создаю новый план...');
     });
 
     // Needs user input
@@ -478,7 +498,9 @@ function setupSSEListeners(eventSource) {
         console.log('Processing complete');
 
         // Финализировать thinking block
-        finishThinking();
+        if (currentThinkingBlock) {
+            finishThinking();
+        }
 
         // Cleanup
         eventSource.close();
@@ -523,12 +545,17 @@ function addErrorMessage(text) {
     const content = currentAssistantMessage.querySelector('.message-content');
 
     const errorEl = document.createElement('div');
-    errorEl.className = 'message-text error';
+    errorEl.className = 'message-text';
     errorEl.style.color = '#ef4444';
     errorEl.textContent = `Ошибка: ${text}`;
 
     content.appendChild(errorEl);
     scrollToBottom();
+
+    // Finish thinking block if exists
+    if (currentThinkingBlock) {
+        finishThinking();
+    }
 }
 
 // ============================================================================
@@ -554,6 +581,10 @@ function scrollToBottom() {
 }
 
 function escapeHtml(text) {
+    if (typeof text !== 'string') {
+        text = String(text);
+    }
+    
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
