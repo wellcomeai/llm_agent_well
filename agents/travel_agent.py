@@ -420,11 +420,35 @@ class TravelAgent:
 
             # Handle context_update intent (short clarifications)
             if intent == 'context_update':
-                response_text = f"Понял! {state.get_summary()}. Чем ещё могу помочь?"
+                # Формируем более информативный ответ
+                if state.is_complete_for_search():
+                    response_text = f"Отлично! Всё понятно: {state.get_summary()}. Готов искать рейсы или что-то ещё нужно уточнить?"
+                else:
+                    missing = state.get_missing_fields()
+                    missing_ru = []
+                    for field in missing:
+                        if field == 'origin':
+                            missing_ru.append('город вылета')
+                        elif field == 'destination':
+                            missing_ru.append('город назначения')
+                        elif field == 'departure_date':
+                            missing_ru.append('дата вылета')
+                        elif field == 'return_date':
+                            missing_ru.append('дата возврата')
+                        elif field == 'passengers':
+                            missing_ru.append('количество пассажиров')
+                    
+                    if missing_ru:
+                        response_text = f"Понял! {state.get_summary()}.\n\nДля поиска рейсов мне ещё нужно: {', '.join(missing_ru)}."
+                    else:
+                        response_text = f"Понял! {state.get_summary()}. Чем ещё могу помочь?"
 
+                logger.info(f"Context update response: {response_text}")
+
+                # ИСПРАВЛЕНО: Используем final_answer чтобы фронтенд показал ответ
                 yield {
-                    "event": "context_update_acknowledged",
-                    "data": {"message": response_text, "state": state.to_dict()}
+                    "event": "final_answer",
+                    "data": {"answer": response_text}
                 }
 
                 memory.save_context(
