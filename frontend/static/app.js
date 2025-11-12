@@ -1,6 +1,6 @@
 /**
- * Travel Agent MVP - Frontend JavaScript
- * Handles SSE streaming, UI updates, and user interactions
+ * Travel Agent - Premium Chat Interface
+ * Clean, minimal, world-class UX
  */
 
 // ============================================================================
@@ -8,131 +8,329 @@
 // ============================================================================
 let currentEventSource = null;
 let sessionId = null;
+let currentThinkingBlock = null;
+let currentAssistantMessage = null;
 
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Travel Agent MVP initialized');
+    console.log('Travel Agent Premium UI initialized');
 
-    // Initialize session ID
+    // Initialize session
     sessionId = getSessionId();
 
-    // Setup keyboard shortcuts
-    setupKeyboardShortcuts();
+    // Setup input handlers
+    setupInputHandlers();
 
-    // Auto-focus on textarea
-    document.getElementById('queryInput').focus();
+    // Auto-resize textarea
+    autoResizeTextarea();
 });
 
 // ============================================================================
 // SESSION MANAGEMENT
 // ============================================================================
 function getSessionId() {
-    // Get or create session ID from sessionStorage
     let id = sessionStorage.getItem('travel_agent_session_id');
-
     if (!id) {
         id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         sessionStorage.setItem('travel_agent_session_id', id);
     }
-
     return id;
 }
 
 // ============================================================================
-// MAIN QUERY SUBMISSION
+// INPUT HANDLERS
 // ============================================================================
-async function submitQuery() {
-    const queryInput = document.getElementById('queryInput');
-    const query = queryInput.value.trim();
+function setupInputHandlers() {
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
 
-    // Validation
-    if (!query) {
-        alert('Пожалуйста, введите ваш запрос');
-        queryInput.focus();
-        return;
-    }
+    // Enable/disable send button based on input
+    input.addEventListener('input', () => {
+        const hasText = input.value.trim().length > 0;
+        sendBtn.disabled = !hasText;
+    });
 
-    // Disable input during processing
+    // Keyboard shortcuts
+    input.addEventListener('keydown', (e) => {
+        // Enter = send (without Shift)
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (!sendBtn.disabled) {
+                sendMessage();
+            }
+        }
+    });
+}
+
+function autoResizeTextarea() {
+    const input = document.getElementById('messageInput');
+    
+    input.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+    });
+}
+
+// ============================================================================
+// SEND MESSAGE
+// ============================================================================
+function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    // Disable input
     setInputEnabled(false);
 
-    // Clear previous results
-    clearResults();
+    // Add user message to chat
+    addUserMessage(message);
 
-    // Show loading indicator
-    showLoading(true);
+    // Clear input
+    input.value = '';
+    input.style.height = 'auto';
 
-    // Close any existing SSE connection
-    if (currentEventSource) {
-        currentEventSource.close();
+    // Start streaming response
+    startStreaming(message);
+}
+
+// ============================================================================
+// MESSAGE COMPONENTS
+// ============================================================================
+function addUserMessage(text) {
+    const chatContainer = document.getElementById('chatContainer');
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'message user';
+    messageEl.innerHTML = `
+        <div class="message-avatar">You</div>
+        <div class="message-content">
+            <div class="message-text">${escapeHtml(text)}</div>
+        </div>
+    `;
+
+    chatContainer.appendChild(messageEl);
+    scrollToBottom();
+}
+
+function addAssistantMessage() {
+    const chatContainer = document.getElementById('chatContainer');
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'message assistant';
+    messageEl.innerHTML = `
+        <div class="message-avatar">AI</div>
+        <div class="message-content">
+            <!-- Thinking block will be added here -->
+            <!-- Final answer will be added here -->
+        </div>
+    `;
+
+    chatContainer.appendChild(messageEl);
+    currentAssistantMessage = messageEl;
+    scrollToBottom();
+
+    return messageEl;
+}
+
+function addTypingIndicator() {
+    if (!currentAssistantMessage) {
+        addAssistantMessage();
     }
 
-    // Create SSE connection
-    const url = `/api/stream?q=${encodeURIComponent(query)}&session_id=${encodeURIComponent(sessionId)}`;
+    const content = currentAssistantMessage.querySelector('.message-content');
+    
+    const typingEl = document.createElement('div');
+    typingEl.className = 'typing-indicator';
+    typingEl.innerHTML = `
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+    `;
 
-    try {
-        currentEventSource = new EventSource(url);
+    content.appendChild(typingEl);
+    scrollToBottom();
 
-        // Setup event listeners
-        setupSSEEventListeners(currentEventSource);
+    return typingEl;
+}
 
-    } catch (error) {
-        console.error('Error creating EventSource:', error);
-        showError('Не удалось установить соединение с сервером');
-        setInputEnabled(true);
-        showLoading(false);
+function removeTypingIndicator() {
+    const typing = currentAssistantMessage?.querySelector('.typing-indicator');
+    if (typing) {
+        typing.remove();
     }
 }
 
 // ============================================================================
-// SSE EVENT LISTENERS
+// THINKING BLOCK (Premium Design)
 // ============================================================================
-function setupSSEEventListeners(eventSource) {
+function createThinkingBlock() {
+    if (!currentAssistantMessage) {
+        addAssistantMessage();
+    }
+
+    const content = currentAssistantMessage.querySelector('.message-content');
+
+    const thinkingEl = document.createElement('div');
+    thinkingEl.className = 'thinking-block';
+    thinkingEl.innerHTML = `
+        <div class="thinking-header" onclick="toggleThinking(this)">
+            <div class="thinking-title">
+                <svg class="thinking-icon spinning" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/>
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span>Thinking...</span>
+            </div>
+            <svg class="thinking-chevron" viewBox="0 0 24 24" fill="none">
+                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <div class="thinking-content">
+            <div class="thinking-steps"></div>
+        </div>
+    `;
+
+    content.insertBefore(thinkingEl, content.firstChild);
+    currentThinkingBlock = thinkingEl;
+    scrollToBottom();
+
+    return thinkingEl;
+}
+
+function addThinkingStep(stepType, content) {
+    if (!currentThinkingBlock) {
+        createThinkingBlock();
+    }
+
+    const stepsContainer = currentThinkingBlock.querySelector('.thinking-steps');
+    
+    const stepEl = document.createElement('div');
+    stepEl.className = `thinking-step ${stepType}`;
+    
+    const label = getStepLabel(stepType);
+    stepEl.innerHTML = `
+        <span class="thinking-step-label">${label}</span>
+        ${escapeHtml(content)}
+    `;
+
+    stepsContainer.appendChild(stepEl);
+    scrollToBottom();
+}
+
+function finishThinking() {
+    if (!currentThinkingBlock) return;
+
+    // Stop spinning icon
+    const icon = currentThinkingBlock.querySelector('.thinking-icon');
+    icon.classList.remove('spinning');
+    icon.innerHTML = `
+        <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    `;
+
+    // Update title
+    const title = currentThinkingBlock.querySelector('.thinking-title span');
+    title.textContent = 'Thought process';
+
+    // Collapse by default (premium UX)
+    currentThinkingBlock.classList.add('collapsed');
+}
+
+function toggleThinking(headerEl) {
+    const block = headerEl.closest('.thinking-block');
+    block.classList.toggle('collapsed');
+}
+
+function getStepLabel(stepType) {
+    const labels = {
+        'act': 'Action:',
+        'observe': 'Result:',
+        'think': 'Analysis:'
+    };
+    return labels[stepType] || 'Step:';
+}
+
+// ============================================================================
+// FINAL ANSWER
+// ============================================================================
+function addFinalAnswer(text) {
+    if (!currentAssistantMessage) {
+        addAssistantMessage();
+    }
+
+    removeTypingIndicator();
+
+    const content = currentAssistantMessage.querySelector('.message-content');
+    
+    const answerEl = document.createElement('div');
+    answerEl.className = 'message-text';
+    answerEl.textContent = text;
+
+    content.appendChild(answerEl);
+    scrollToBottom();
+
+    // Finish thinking block
+    if (currentThinkingBlock) {
+        finishThinking();
+    }
+}
+
+// ============================================================================
+// SSE STREAMING
+// ============================================================================
+function startStreaming(query) {
+    // Close existing connection
+    if (currentEventSource) {
+        currentEventSource.close();
+    }
+
+    // Reset state
+    currentThinkingBlock = null;
+    currentAssistantMessage = null;
+
+    // Create URL
+    const url = `/api/stream?q=${encodeURIComponent(query)}&session_id=${encodeURIComponent(sessionId)}`;
+
+    try {
+        currentEventSource = new EventSource(url);
+        setupSSEListeners(currentEventSource);
+    } catch (error) {
+        console.error('Error creating EventSource:', error);
+        addErrorMessage('Failed to connect to server');
+        setInputEnabled(true);
+    }
+}
+
+function setupSSEListeners(eventSource) {
     // Start event
     eventSource.addEventListener('start', (event) => {
-        console.log('Agent started:', event.data);
-        const data = JSON.parse(event.data);
-        showLoading(false);
-        showReasoningSection(true);
-
-        addReasoningStep({
-            step_type: 'start',
-            content: data.message,
-            timestamp: data.timestamp,
-            metadata: data
-        });
+        console.log('Agent started');
+        addTypingIndicator();
     });
 
-    // Think step
-    eventSource.addEventListener('think', (event) => {
-        const step = JSON.parse(event.data);
-        addReasoningStep(step);
-    });
-
-    // Act step
+    // Act event (tool call)
     eventSource.addEventListener('act', (event) => {
-        const step = JSON.parse(event.data);
-        addReasoningStep(step);
+        const data = JSON.parse(event.data);
+        addThinkingStep('act', data.content);
     });
 
-    // Observe step
+    // Observe event (tool result)
     eventSource.addEventListener('observe', (event) => {
-        const step = JSON.parse(event.data);
-        addReasoningStep(step);
+        const data = JSON.parse(event.data);
+        addThinkingStep('observe', data.content);
     });
 
-    // Done event - final answer
+    // Done event (final answer)
     eventSource.addEventListener('done', (event) => {
-        const step = JSON.parse(event.data);
-        addReasoningStep(step);
-        showFinalAnswer(step.content);
+        const data = JSON.parse(event.data);
+        addFinalAnswer(data.content);
 
         // Cleanup
         eventSource.close();
         currentEventSource = null;
         setInputEnabled(true);
-        showLoading(false);
     });
 
     // Error event
@@ -141,18 +339,16 @@ function setupSSEEventListeners(eventSource) {
 
         if (event.data) {
             try {
-                const errorData = JSON.parse(event.data);
-                showError(errorData.content || 'Произошла ошибка');
-                addReasoningStep(errorData);
+                const data = JSON.parse(event.data);
+                addErrorMessage(data.content);
             } catch (e) {
-                showError('Произошла ошибка при обработке запроса');
+                addErrorMessage('An error occurred');
             }
         } else {
-            // Connection error
             if (eventSource.readyState === EventSource.CLOSED) {
                 console.log('SSE connection closed');
             } else {
-                showError('Потеряно соединение с сервером');
+                addErrorMessage('Lost connection to server');
             }
         }
 
@@ -160,248 +356,75 @@ function setupSSEEventListeners(eventSource) {
         eventSource.close();
         currentEventSource = null;
         setInputEnabled(true);
-        showLoading(false);
     });
 }
 
 // ============================================================================
-// UI UPDATES
+// ERROR HANDLING
 // ============================================================================
-function addReasoningStep(step) {
-    const reasoningSteps = document.getElementById('reasoningSteps');
+function addErrorMessage(text) {
+    if (!currentAssistantMessage) {
+        addAssistantMessage();
+    }
 
-    // Create step element
-    const stepElement = document.createElement('div');
-    stepElement.className = `reasoning-step ${step.step_type}`;
+    removeTypingIndicator();
 
-    // Get icon for step type
-    const icon = getStepIcon(step.step_type);
+    const content = currentAssistantMessage.querySelector('.message-content');
+    
+    const errorEl = document.createElement('div');
+    errorEl.className = 'message-text';
+    errorEl.style.color = '#ef4444';
+    errorEl.textContent = text;
 
-    // Format timestamp
-    const timestamp = formatTimestamp(step.timestamp);
-
-    // Build step HTML
-    stepElement.innerHTML = `
-        <div class="step-header">
-            <span class="step-icon">${icon}</span>
-            <span class="step-type">${step.step_type}</span>
-            <span class="step-timestamp">${timestamp}</span>
-        </div>
-        <div class="step-content">${escapeHtml(step.content)}</div>
-        ${step.metadata ? formatMetadata(step.metadata) : ''}
-    `;
-
-    // Add to container
-    reasoningSteps.appendChild(stepElement);
-
-    // Auto-scroll to bottom
-    stepElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    content.appendChild(errorEl);
+    scrollToBottom();
 }
 
-function showFinalAnswer(content) {
-    const finalAnswerSection = document.getElementById('finalAnswerSection');
-    const finalAnswerContent = document.getElementById('finalAnswerContent');
-
-    finalAnswerContent.textContent = content;
-    finalAnswerSection.style.display = 'block';
-
-    // Smooth scroll to final answer
-    setTimeout(() => {
-        finalAnswerSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 300);
-}
-
-function showReasoningSection(show) {
-    const reasoningSection = document.getElementById('reasoningSection');
-    reasoningSection.style.display = show ? 'block' : 'none';
-}
-
-function showLoading(show) {
-    const loadingIndicator = document.getElementById('loadingIndicator');
-    loadingIndicator.style.display = show ? 'flex' : 'none';
-}
-
+// ============================================================================
+// UI UTILITIES
+// ============================================================================
 function setInputEnabled(enabled) {
-    const queryInput = document.getElementById('queryInput');
-    const submitBtn = document.getElementById('submitBtn');
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
 
-    queryInput.disabled = !enabled;
-    submitBtn.disabled = !enabled;
-
+    input.disabled = !enabled;
+    
     if (enabled) {
-        submitBtn.querySelector('.button-text').textContent = 'Отправить';
+        input.focus();
+        sendBtn.disabled = input.value.trim().length === 0;
     } else {
-        submitBtn.querySelector('.button-text').textContent = 'Обработка...';
+        sendBtn.disabled = true;
     }
 }
 
-function clearResults() {
-    // Clear reasoning steps
-    const reasoningSteps = document.getElementById('reasoningSteps');
-    reasoningSteps.innerHTML = '';
-
-    // Hide sections
-    document.getElementById('reasoningSection').style.display = 'none';
-    document.getElementById('finalAnswerSection').style.display = 'none';
-
-    // Clear final answer
-    document.getElementById('finalAnswerContent').textContent = '';
-}
-
-function showError(message) {
-    const reasoningSteps = document.getElementById('reasoningSteps');
-
-    const errorElement = document.createElement('div');
-    errorElement.className = 'reasoning-step error';
-    errorElement.innerHTML = `
-        <div class="step-header">
-            <span class="step-icon">❌</span>
-            <span class="step-type">ERROR</span>
-            <span class="step-timestamp">${formatTimestamp(new Date().toISOString())}</span>
-        </div>
-        <div class="step-content">${escapeHtml(message)}</div>
-    `;
-
-    reasoningSteps.appendChild(errorElement);
-
-    // Show reasoning section if hidden
-    showReasoningSection(true);
-
-    // Auto-scroll
-    errorElement.scrollIntoView({ behavior: 'smooth' });
-}
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-function getStepIcon(stepType) {
-    const icons = {
-        'start': '🚀',
-        'think': '🤔',
-        'act': '🔧',
-        'observe': '👀',
-        'done': '✅',
-        'error': '❌'
-    };
-
-    return icons[stepType] || '📌';
-}
-
-function formatTimestamp(isoString) {
-    if (!isoString) return '';
-
-    try {
-        const date = new Date(isoString);
-        return date.toLocaleTimeString('ru-RU', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
+function scrollToBottom() {
+    const chatContainer = document.getElementById('chatContainer');
+    setTimeout(() => {
+        chatContainer.scrollTo({
+            top: chatContainer.scrollHeight,
+            behavior: 'smooth'
         });
-    } catch (e) {
-        return '';
-    }
-}
-
-function formatMetadata(metadata) {
-    if (!metadata || Object.keys(metadata).length === 0) {
-        return '';
-    }
-
-    // Filter out certain keys
-    const filtered = { ...metadata };
-    delete filtered.session_id;
-
-    if (Object.keys(filtered).length === 0) {
-        return '';
-    }
-
-    // Format as readable text
-    let html = '<div class="step-metadata">';
-
-    if (filtered.tool_name) {
-        html += `<div><span class="metadata-label">Инструмент:</span> ${escapeHtml(filtered.tool_name)}</div>`;
-    }
-
-    if (filtered.tool_args) {
-        html += `<div><span class="metadata-label">Параметры:</span> ${escapeHtml(JSON.stringify(filtered.tool_args, null, 2))}</div>`;
-    }
-
-    if (filtered.tool_result) {
-        const resultStr = JSON.stringify(filtered.tool_result, null, 2);
-        // Truncate if too long
-        const truncated = resultStr.length > 500 ? resultStr.substring(0, 500) + '...' : resultStr;
-        html += `<div><span class="metadata-label">Результат:</span> <pre style="margin-top: 0.5rem; padding: 0.5rem; background: #f8f9fa; border-radius: 4px; overflow-x: auto;">${escapeHtml(truncated)}</pre></div>`;
-    }
-
-    if (filtered.iterations) {
-        html += `<div><span class="metadata-label">Итераций:</span> ${filtered.iterations}</div>`;
-    }
-
-    html += '</div>';
-
-    return html;
+    }, 100);
 }
 
 function escapeHtml(text) {
     if (typeof text !== 'string') {
         text = String(text);
     }
-
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
 // ============================================================================
-// EXAMPLE QUERIES
-// ============================================================================
-function setExampleQuery(query) {
-    const queryInput = document.getElementById('queryInput');
-    queryInput.value = query;
-    queryInput.focus();
-
-    // Optionally, auto-submit
-    // submitQuery();
-}
-
-// ============================================================================
-// KEYBOARD SHORTCUTS
-// ============================================================================
-function setupKeyboardShortcuts() {
-    const queryInput = document.getElementById('queryInput');
-
-    queryInput.addEventListener('keydown', (event) => {
-        // Enter without Shift = submit
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            submitQuery();
-        }
-
-        // Shift + Enter = new line (default behavior)
-    });
-}
-
-// ============================================================================
-// UTILITIES
-// ============================================================================
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-        console.log('Copied to clipboard');
-    }).catch(err => {
-        console.error('Failed to copy:', err);
-    });
-}
-
-// ============================================================================
-// EXPORT FOR TESTING
+// EXPORT (for testing)
 // ============================================================================
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-        submitQuery,
-        addReasoningStep,
-        showFinalAnswer,
-        getStepIcon,
-        formatTimestamp,
-        escapeHtml
+        sendMessage,
+        addUserMessage,
+        addAssistantMessage,
+        addThinkingStep,
+        addFinalAnswer
     };
 }
