@@ -3,151 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Travel Agent MVP - AI-powered travel planning assistant with ReAct pattern">
-    <title>🧳 Travel Agent MVP</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>Travel Agent</title>
+    <link rel="stylesheet" href="/static/style_premium.css">
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <h1 class="header-title">🧳 Travel Agent MVP</h1>
-                <p class="header-subtitle">Умный помощник для планирования путешествий</p>
-                <div class="header-tech">
-                    <span class="tech-badge">ReAct Pattern</span>
-                    <span class="tech-badge">LangChain</span>
-                    <span class="tech-badge">OpenAI</span>
-                    <span class="tech-badge">Real-time Streaming</span>
-                </div>
+    <div class="app">
+        <!-- Chat Container -->
+        <div class="chat-container" id="chatContainer">
+            <!-- Messages will be added here dynamically -->
+        </div>
+
+        <!-- Input Container (fixed at bottom) -->
+        <div class="input-container">
+            <div class="input-wrapper">
+                <textarea
+                    id="messageInput"
+                    class="message-input"
+                    placeholder="Message Travel Agent..."
+                    rows="1"
+                    autofocus
+                ></textarea>
+                <button 
+                    id="sendBtn" 
+                    class="send-button"
+                    onclick="sendMessage()"
+                    disabled
+                >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M7 11L12 6L17 11M12 18V7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
             </div>
-        </header>
-
-        <main class="main-content">
-            <!-- Input Section -->
-            <section class="input-section">
-                <h2 class="section-title">📝 Ваш запрос</h2>
-                <div class="input-container">
-                    <textarea
-                        id="queryInput"
-                        class="query-textarea"
-                        placeholder="Например:&#10;- Какая погода в Париже?&#10;- Спланируй поездку в Берлин&#10;- Найди рейсы из Амстердама в Рим на 20 января"
-                        rows="4"
-                    ></textarea>
-                    <div class="input-footer">
-                        <div class="input-hint">
-                            💡 Shift + Enter для новой строки, Enter для отправки
-                        </div>
-                        <button
-                            id="submitBtn"
-                            class="submit-button"
-                            onclick="submitQuery()"
-                        >
-                            <span class="button-text">Отправить</span>
-                            <span class="button-icon">→</span>
-                        </button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Reasoning Log (SSE streaming) -->
-            <section class="reasoning-section" id="reasoningSection" style="display: none;">
-                <h2 class="section-title">🤖 Ход рассуждений (ReAct Loop)</h2>
-                <div class="reasoning-log" id="reasoningSteps">
-                    <!-- Steps will be added here dynamically -->
-                </div>
-            </section>
-
-            <!-- Final Answer -->
-            <section class="final-answer-section" id="finalAnswerSection" style="display: none;">
-                <h2 class="section-title">✅ Итоговый ответ</h2>
-                <div class="final-answer-content" id="finalAnswerContent">
-                    <!-- Final answer will be shown here -->
-                </div>
-            </section>
-
-            <!-- Loading Indicator -->
-            <div class="loading-container" id="loadingIndicator" style="display: none;">
-                <div class="loading-spinner"></div>
-                <p class="loading-text">Агент обрабатывает ваш запрос...</p>
-            </div>
-
-            <!-- Examples Section -->
-            <section class="examples-section">
-                <h2 class="section-title">💡 Примеры запросов</h2>
-                <div class="examples-grid">
-                    <div class="example-card" onclick="setExampleQuery(this.dataset.query)" data-query="Какая погода в Париже?">
-                        <div class="example-icon">🌤️</div>
-                        <div class="example-title">Погода</div>
-                        <div class="example-text">Какая погода в Париже?</div>
-                    </div>
-                    <div class="example-card" onclick="setExampleQuery(this.dataset.query)" data-query="Найди рейсы из Амстердама в Лондон">
-                        <div class="example-icon">✈️</div>
-                        <div class="example-title">Поиск рейсов</div>
-                        <div class="example-text">Найди рейсы из Амстердама в Лондон</div>
-                    </div>
-                    <div class="example-card" onclick="setExampleQuery(this.dataset.query)" data-query="Спланируй поездку в Берлин на выходные">
-                        <div class="example-icon">🗺️</div>
-                        <div class="example-title">Планирование</div>
-                        <div class="example-text">Спланируй поездку в Берлин на выходные</div>
-                    </div>
-                    <div class="example-card" onclick="setExampleQuery(this.dataset.query)" data-query="Хочу полететь в Токио в марте, что посоветуешь?">
-                        <div class="example-icon">🎌</div>
-                        <div class="example-title">Рекомендации</div>
-                        <div class="example-text">Хочу полететь в Токио в марте</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- How it works -->
-            <section class="how-it-works-section">
-                <h2 class="section-title">🔄 Как работает ReAct Pattern</h2>
-                <div class="react-flow">
-                    <div class="react-step">
-                        <div class="react-step-icon think">🤔</div>
-                        <div class="react-step-title">THINK</div>
-                        <div class="react-step-desc">Агент анализирует запрос и составляет план</div>
-                    </div>
-                    <div class="react-arrow">→</div>
-                    <div class="react-step">
-                        <div class="react-step-icon act">🔧</div>
-                        <div class="react-step-title">ACT</div>
-                        <div class="react-step-desc">Выполняет действие (вызывает инструмент)</div>
-                    </div>
-                    <div class="react-arrow">→</div>
-                    <div class="react-step">
-                        <div class="react-step-icon observe">👀</div>
-                        <div class="react-step-title">OBSERVE</div>
-                        <div class="react-step-desc">Анализирует результат действия</div>
-                    </div>
-                    <div class="react-arrow">→</div>
-                    <div class="react-step">
-                        <div class="react-step-icon done">✅</div>
-                        <div class="react-step-title">DONE</div>
-                        <div class="react-step-desc">Формирует итоговый ответ</div>
-                    </div>
-                </div>
-            </section>
-        </main>
-
-        <!-- Footer -->
-        <footer class="footer">
-            <div class="footer-content">
-                <p class="footer-text">
-                    Powered by <strong>LangChain</strong> + <strong>OpenAI</strong>
-                </p>
-                <p class="footer-links">
-                    <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
-                    <span class="separator">|</span>
-                    <a href="/health" target="_blank">API Health</a>
-                    <span class="separator">|</span>
-                    <span class="version">v1.0.0</span>
-                </p>
-            </div>
-        </footer>
+        </div>
     </div>
 
-    <!-- Include JavaScript -->
-    <script src="/static/app.js"></script>
+    <script src="/static/app_premium.js"></script>
 </body>
 </html>
