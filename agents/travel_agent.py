@@ -18,7 +18,7 @@ from typing import AsyncGenerator, Dict, Any, Optional
 
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.callbacks.base import AsyncCallbackHandler
 from dotenv import load_dotenv
@@ -85,6 +85,8 @@ REACT_PROMPT = """Ты - профессиональный помощник по 
 Доступные инструменты:
 {tools}
 
+Названия инструментов: {tool_names}
+
 Используй следующий формат:
 
 Thought: [твои размышления о том, что нужно сделать]
@@ -92,10 +94,12 @@ Action: [название инструмента из списка выше]
 Action Input: [входные данные для инструмента в формате JSON]
 Observation: [результат выполнения инструмента]
 ... (повторяй Thought/Action/Action Input/Observation сколько нужно)
-Thought: Теперь у меня есть вся необходимая информация для ответа
+Thought: Теперь у меня есь вся необходимая информация для ответа
 Final Answer: [подробный и полезный ответ пользователю на русском языке]
 
 Начинай!
+
+Вопрос пользователя: {input}
 
 {agent_scratchpad}"""
 
@@ -271,13 +275,8 @@ class TravelAgent:
         self.tools = [get_weather_tool, search_flights_tool]
         logger.info(f"Tools loaded: {[tool.name for tool in self.tools]}")
 
-        # Create prompt template
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", REACT_PROMPT),
-            MessagesPlaceholder(variable_name="chat_history", optional=True),
-            ("human", "{input}"),
-            ("ai", "{agent_scratchpad}")
-        ])
+        # Create prompt template for ReAct agent
+        self.prompt = PromptTemplate.from_template(REACT_PROMPT)
         logger.info("Prompt template created")
 
         # Create ReAct agent
