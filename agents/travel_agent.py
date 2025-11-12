@@ -1,5 +1,5 @@
 """
-Travel Agent with Google ADK and ReAct Pattern.
+Travel Agent with Google ADK and ReAct Pattern - WITH DETAILED LOGGING.
 
 This agent helps users plan trips by:
 1. Getting weather information for destinations
@@ -11,10 +11,18 @@ Uses ReAct pattern: Think → Act → Observe → Repeat
 
 import os
 import json
+import logging
 from datetime import datetime
 from typing import AsyncGenerator, Dict, Any, Optional
 from google import genai
 from google.genai.types import Tool, GenerateContentConfig, Content, Part
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Import our custom functions
 import sys
@@ -110,16 +118,26 @@ class TravelAgent:
             temperature: Model temperature (0.0-1.0)
             max_tokens: Maximum tokens in response
         """
+        logger.info("=== Initializing TravelAgent ===")
+        
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
+            logger.error("GOOGLE_API_KEY not found in environment")
             raise ValueError("GOOGLE_API_KEY не найден в environment variables")
 
         self.model_name = model_name
         self.temperature = temperature
         self.max_tokens = max_tokens
 
+        logger.info(f"Model: {model_name}, Temperature: {temperature}")
+
         # Initialize Google GenAI client
-        self.client = genai.Client(api_key=self.api_key)
+        try:
+            self.client = genai.Client(api_key=self.api_key)
+            logger.info("Google GenAI client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Google GenAI client: {e}")
+            raise
 
         # Define tools for the agent
         self.tools = [
@@ -165,6 +183,8 @@ class TravelAgent:
 
         # Session memory (простая реализация для MVP)
         self.sessions: Dict[str, list] = {}
+        
+        logger.info("TravelAgent initialization complete")
 
     def _execute_function(self, function_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -177,14 +197,28 @@ class TravelAgent:
         Returns:
             Function result
         """
-        if function_name == "get_weather":
-            return get_weather(**arguments)
-        elif function_name == "search_flights":
-            return search_flights(**arguments)
-        else:
+        logger.info(f"Executing function: {function_name} with args: {arguments}")
+        
+        try:
+            if function_name == "get_weather":
+                result = get_weather(**arguments)
+                logger.info(f"get_weather result: {result.get('success', False)}")
+                return result
+            elif function_name == "search_flights":
+                result = search_flights(**arguments)
+                logger.info(f"search_flights result: {result.get('success', False)}")
+                return result
+            else:
+                logger.error(f"Unknown function: {function_name}")
+                return {
+                    "success": False,
+                    "error": f"Unknown function: {function_name}"
+                }
+        except Exception as e:
+            logger.error(f"Error executing {function_name}: {e}", exc_info=True)
             return {
                 "success": False,
-                "error": f"Unknown function: {function_name}"
+                "error": f"Error in {function_name}: {str(e)}"
             }
 
     async def run(
@@ -209,10 +243,14 @@ class TravelAgent:
             }
         """
         session_id = session_id or f"session_{datetime.now().timestamp()}"
+        
+        logger.info(f"=== Starting agent run for session: {session_id} ===")
+        logger.info(f"User query: {user_query}")
 
         # Initialize or get session history
         if session_id not in self.sessions:
             self.sessions[session_id] = []
+            logger.info(f"Created new session: {session_id}")
 
         # Add user message to history
         self.sessions[session_id].append({
@@ -222,6 +260,7 @@ class TravelAgent:
 
         try:
             # Yield start event
+            logger.info("Yielding START event")
             yield {
                 "step_type": "start",
                 "content": f"Обрабатываю запрос: {user_query}",
@@ -229,12 +268,14 @@ class TravelAgent:
                 "metadata": {"session_id": session_id}
             }
 
-            # Create config
+            # Create config with tools
             config = GenerateContentConfig(
                 temperature=self.temperature,
                 max_output_tokens=self.max_tokens,
                 system_instruction=SYSTEM_INSTRUCTIONS,
+                tools=self.tools  # Tools go INSIDE config!
             )
+            logger.info("Created GenerateContentConfig with tools")
 
             # Run ReAct loop
             max_iterations = 10
@@ -242,87 +283,109 @@ class TravelAgent:
 
             while iteration < max_iterations:
                 iteration += 1
+                logger.info(f"=== ReAct iteration {iteration}/{max_iterations} ===")
 
-                # Generate response
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=self.sessions[session_id],
-                    config=config,
-                    tools=self.tools
-                )
+                try:
+                    # Generate response
+                    logger.info("Calling Google Gemini API...")
+                    response = self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=self.sessions[session_id],
+                        config=config
+                        # NO 'tools' parameter here - it's in config!
+                    )
+                    logger.info("Received response from Gemini API")
 
-                # Check if model wants to call a function
-                if response.candidates[0].content.parts[0].function_call:
-                    function_call = response.candidates[0].content.parts[0].function_call
-                    function_name = function_call.name
-                    function_args = dict(function_call.args)
+                    # Check if model wants to call a function
+                    if response.candidates[0].content.parts[0].function_call:
+                        function_call = response.candidates[0].content.parts[0].function_call
+                        function_name = function_call.name
+                        function_args = dict(function_call.args)
 
-                    # Yield ACT step
-                    yield {
-                        "step_type": "act",
-                        "content": f"Вызываю функцию: {function_name}",
-                        "timestamp": datetime.now().isoformat(),
-                        "metadata": {
-                            "tool_name": function_name,
-                            "tool_args": function_args
-                        }
-                    }
+                        logger.info(f"Model requested function call: {function_name}")
 
-                    # Execute function
-                    function_result = self._execute_function(function_name, function_args)
-
-                    # Yield OBSERVE step
-                    yield {
-                        "step_type": "observe",
-                        "content": f"Результат функции {function_name}: {json.dumps(function_result, ensure_ascii=False, indent=2)}",
-                        "timestamp": datetime.now().isoformat(),
-                        "metadata": {
-                            "tool_name": function_name,
-                            "tool_result": function_result
-                        }
-                    }
-
-                    # Add function call to history
-                    self.sessions[session_id].append({
-                        "role": "model",
-                        "parts": [{"function_call": function_call}]
-                    })
-
-                    # Add function response to history
-                    self.sessions[session_id].append({
-                        "role": "user",
-                        "parts": [{
-                            "function_response": {
-                                "name": function_name,
-                                "response": function_result
+                        # Yield ACT step
+                        yield {
+                            "step_type": "act",
+                            "content": f"Вызываю функцию: {function_name}",
+                            "timestamp": datetime.now().isoformat(),
+                            "metadata": {
+                                "tool_name": function_name,
+                                "tool_args": function_args
                             }
-                        }]
-                    })
+                        }
 
-                else:
-                    # Model has generated final text response
-                    final_text = response.candidates[0].content.parts[0].text
+                        # Execute function
+                        function_result = self._execute_function(function_name, function_args)
 
-                    # Add to history
-                    self.sessions[session_id].append({
-                        "role": "model",
-                        "parts": [{"text": final_text}]
-                    })
+                        # Yield OBSERVE step
+                        yield {
+                            "step_type": "observe",
+                            "content": f"Результат функции {function_name}: {json.dumps(function_result, ensure_ascii=False, indent=2)}",
+                            "timestamp": datetime.now().isoformat(),
+                            "metadata": {
+                                "tool_name": function_name,
+                                "tool_result": function_result
+                            }
+                        }
 
-                    # Yield DONE step
+                        # Add function call to history
+                        self.sessions[session_id].append({
+                            "role": "model",
+                            "parts": [{"function_call": function_call}]
+                        })
+
+                        # Add function response to history
+                        self.sessions[session_id].append({
+                            "role": "user",
+                            "parts": [{
+                                "function_response": {
+                                    "name": function_name,
+                                    "response": function_result
+                                }
+                            }]
+                        })
+
+                    else:
+                        # Model has generated final text response
+                        final_text = response.candidates[0].content.parts[0].text
+                        logger.info(f"Model generated final response (length: {len(final_text)})")
+
+                        # Add to history
+                        self.sessions[session_id].append({
+                            "role": "model",
+                            "parts": [{"text": final_text}]
+                        })
+
+                        # Yield DONE step
+                        yield {
+                            "step_type": "done",
+                            "content": final_text,
+                            "timestamp": datetime.now().isoformat(),
+                            "metadata": {
+                                "iterations": iteration,
+                                "session_id": session_id
+                            }
+                        }
+
+                        logger.info("Agent completed successfully")
+                        break
+
+                except Exception as e:
+                    logger.error(f"Error in ReAct iteration {iteration}: {e}", exc_info=True)
                     yield {
-                        "step_type": "done",
-                        "content": final_text,
+                        "step_type": "error",
+                        "content": f"Ошибка в итерации {iteration}: {str(e)}",
                         "timestamp": datetime.now().isoformat(),
                         "metadata": {
-                            "iterations": iteration,
-                            "session_id": session_id
+                            "error_type": type(e).__name__,
+                            "iteration": iteration
                         }
                     }
-
                     break
 
             if iteration >= max_iterations:
+                logger.warning("Reached max iterations")
                 yield {
                     "step_type": "error",
                     "content": "Достигнут лимит итераций ReAct loop",
@@ -331,6 +394,7 @@ class TravelAgent:
                 }
 
         except Exception as e:
+            logger.error(f"Fatal error in agent.run(): {e}", exc_info=True)
             yield {
                 "step_type": "error",
                 "content": f"Ошибка при обработке запроса: {str(e)}",
