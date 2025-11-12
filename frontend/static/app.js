@@ -213,10 +213,17 @@ function updateThinkingSteps(step) {
 }
 
 function showFinalResponse(text) {
+    console.log('💬 [UI] showFinalResponse called with text length:', text?.length || 0);  // 🔥 ДОБАВЛЕНО
+    console.log('💬 [UI] Text preview:', text?.substring(0, 100));  // 🔥 ДОБАВЛЕНО
+
     const assistantText = document.getElementById('assistantText');
     if (assistantText) {
+        console.log('💬 [UI] Found assistantText element, setting content');  // 🔥 ДОБАВЛЕНО
         assistantText.textContent = text;
         assistantText.style.display = 'block';
+        console.log('💬 [UI] Content displayed successfully');  // 🔥 ДОБАВЛЕНО
+    } else {
+        console.error('❌ [UI] assistantText element not found!');  // 🔥 ДОБАВЛЕНО
     }
 
     // Remove current message ID
@@ -246,9 +253,14 @@ function toggleThinking(header) {
 // SSE EVENT LISTENERS
 // ============================================================================
 function setupSSEEventListeners(eventSource) {
+    // 🔥 ДОБАВЛЕНО: Обработка открытия соединения
+    eventSource.onopen = () => {
+        console.log('✅ [SSE] Connection opened');
+    };
+
     // Start event
     eventSource.addEventListener('start', (event) => {
-        console.log('Agent started:', event.data);
+        console.log('📥 [SSE] Received START event:', event.data);  // 🔥 УЛУЧШЕНО
         startTime = Date.now();
 
         addAssistantMessage();
@@ -262,6 +274,7 @@ function setupSSEEventListeners(eventSource) {
 
     // Think step
     eventSource.addEventListener('think', (event) => {
+        console.log('📥 [SSE] Received THINK event:', event.data);  // 🔥 ДОБАВЛЕНО
         const step = JSON.parse(event.data);
         updateThinkingSteps({
             step_type: 'start',
@@ -271,6 +284,7 @@ function setupSSEEventListeners(eventSource) {
 
     // Act step
     eventSource.addEventListener('act', (event) => {
+        console.log('📥 [SSE] Received ACT event:', event.data);  // 🔥 ДОБАВЛЕНО
         const step = JSON.parse(event.data);
         updateThinkingSteps({
             step_type: 'act',
@@ -280,6 +294,7 @@ function setupSSEEventListeners(eventSource) {
 
     // Observe step
     eventSource.addEventListener('observe', (event) => {
+        console.log('📥 [SSE] Received OBSERVE event:', event.data);  // 🔥 ДОБАВЛЕНО
         const step = JSON.parse(event.data);
         updateThinkingSteps({
             step_type: 'observe',
@@ -289,7 +304,11 @@ function setupSSEEventListeners(eventSource) {
 
     // Done event - final answer
     eventSource.addEventListener('done', (event) => {
+        console.log('📥 [SSE] Received DONE event:', event.data);  // 🔥 ДОБАВЛЕНО
         const step = JSON.parse(event.data);
+
+        console.log('📥 [SSE] DONE content length:', step.content?.length || 0);  // 🔥 ДОБАВЛЕНО
+        console.log('📥 [SSE] DONE content preview:', step.content?.substring(0, 100));  // 🔥 ДОБАВЛЕНО
 
         updateThinkingSteps({
             step_type: 'done',
@@ -311,6 +330,7 @@ function setupSSEEventListeners(eventSource) {
         }
 
         // Cleanup
+        console.log('✅ [SSE] Closing connection');  // 🔥 ДОБАВЛЕНО
         eventSource.close();
         currentEventSource = null;
         setInputEnabled(true);
@@ -318,28 +338,39 @@ function setupSSEEventListeners(eventSource) {
 
     // Error event
     eventSource.addEventListener('error', (event) => {
-        console.error('SSE Error:', event);
+        console.error('❌ [SSE] Error event:', event);  // 🔥 УЛУЧШЕНО
+        console.error('❌ [SSE] ReadyState:', eventSource.readyState);  // 🔥 ДОБАВЛЕНО
+        console.error('❌ [SSE] ReadyState values: CONNECTING=0, OPEN=1, CLOSED=2');  // 🔥 ДОБАВЛЕНО
 
         if (event.data) {
             try {
+                console.error('❌ [SSE] Error data:', event.data);  // 🔥 ДОБАВЛЕНО
                 const errorData = JSON.parse(event.data);
                 showError(errorData.content || 'Произошла ошибка');
             } catch (e) {
+                console.error('❌ [SSE] Failed to parse error data:', e);  // 🔥 ДОБАВЛЕНО
                 showError('Произошла ошибка при обработке запроса');
             }
         } else {
             if (eventSource.readyState === EventSource.CLOSED) {
-                console.log('SSE connection closed');
+                console.log('⚠️  [SSE] Connection closed');  // 🔥 УЛУЧШЕНО
             } else {
+                console.error('❌ [SSE] Connection error, state:', eventSource.readyState);  // 🔥 ДОБАВЛЕНО
                 showError('Потеряно соединение с сервером');
             }
         }
 
         // Cleanup
+        console.log('🧹 [SSE] Cleaning up connection');  // 🔥 ДОБАВЛЕНО
         eventSource.close();
         currentEventSource = null;
         setInputEnabled(true);
     });
+
+    // 🔥 ДОБАВЛЕНО: Обработка всех необработанных событий
+    eventSource.onmessage = (event) => {
+        console.log('📥 [SSE] Received unhandled message event:', event);
+    };
 }
 
 // ============================================================================

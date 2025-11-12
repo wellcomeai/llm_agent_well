@@ -163,24 +163,29 @@ async def stream_agent_response(
             agent_instance = get_agent()
 
             # Send initial event
+            start_data = {
+                "message": "Agent started processing",
+                "query": q,
+                "timestamp": datetime.now().isoformat()
+            }
+            print(f"📤 [SSE] Sending START event to client (session: {session_id})")  # 🔥 ДОБАВЛЕНО
             yield {
                 "event": "start",
-                "data": json.dumps({
-                    "message": "Agent started processing",
-                    "query": q,
-                    "timestamp": datetime.now().isoformat()
-                }, ensure_ascii=False)
+                "data": json.dumps(start_data, ensure_ascii=False)
             }
 
             # Stream agent steps
             async for step in agent_instance.run(q, session_id):
                 # Check if client disconnected
                 if await request.is_disconnected():
-                    print(f"Client disconnected for session {session_id}")
+                    print(f"⚠️  [SSE] Client disconnected for session {session_id}")  # 🔥 УЛУЧШЕНО
                     break
 
                 # Send step event
                 event_type = step["step_type"]
+                content_preview = step.get("content", "")[:50]  # 🔥 ДОБАВЛЕНО: превью контента
+
+                print(f"📤 [SSE] Sending {event_type.upper()} event: {content_preview}...")  # 🔥 ДОБАВЛЕНО
 
                 yield {
                     "event": event_type,
@@ -188,19 +193,23 @@ async def stream_agent_response(
                 }
 
                 # Small delay to prevent overwhelming the client
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.2)  # 🔥 УВЕЛИЧЕНО: с 0.1 до 0.2
 
         except Exception as e:
             # Send error event
+            error_msg = f"Server error: {str(e)}"
+            print(f"❌ [SSE] Error in event_generator: {error_msg}")  # 🔥 ДОБАВЛЕНО
             yield {
                 "event": "error",
                 "data": json.dumps({
                     "step_type": "error",
-                    "content": f"Server error: {str(e)}",
+                    "content": error_msg,
                     "timestamp": datetime.now().isoformat(),
                     "metadata": {"error_type": type(e).__name__}
                 }, ensure_ascii=False)
             }
+        finally:
+            print(f"🏁 [SSE] Event generator finished for session {session_id}")  # 🔥 ДОБАВЛЕНО
 
     return EventSourceResponse(event_generator())
 

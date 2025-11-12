@@ -169,7 +169,10 @@ class TravelAgent:
 
         # Session memory (простая реализация для MVP)
         self.sessions: Dict[str, list] = {}
-        
+
+        # Ограничение размера истории чтобы не переполнить контекст
+        self.max_history_messages = 20  # 🔥 ДОБАВЛЕНО: Лимит сообщений в истории
+
         logger.info("TravelAgent initialization complete")
 
     def _execute_function(self, function_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -246,15 +249,25 @@ class TravelAgent:
             "content": user_query
         })
 
+        # 🔥 ДОБАВЛЕНО: Ограничение размера истории
+        if len(self.sessions[session_id]) > self.max_history_messages:
+            logger.warning(f"Session history exceeds {self.max_history_messages} messages, trimming...")
+            # Оставляем system message + последние N сообщений
+            system_msg = self.sessions[session_id][0]
+            recent_messages = self.sessions[session_id][-(self.max_history_messages - 1):]
+            self.sessions[session_id] = [system_msg] + recent_messages
+            logger.info(f"Session history trimmed to {len(self.sessions[session_id])} messages")
+
         try:
             # Yield start event
-            logger.info("Yielding START event")
-            yield {
+            start_event = {
                 "step_type": "start",
                 "content": f"Обрабатываю запрос: {user_query}",
                 "timestamp": datetime.now().isoformat(),
                 "metadata": {"session_id": session_id}
             }
+            logger.info(f"📤 Yielding START event: {start_event['content']}")  # 🔥 УЛУЧШЕНО
+            yield start_event
 
             # Run ReAct loop
             max_iterations = 10
@@ -293,7 +306,7 @@ class TravelAgent:
                             logger.info(f"Tool call: {function_name}")
 
                             # Yield ACT step
-                            yield {
+                            act_event = {
                                 "step_type": "act",
                                 "content": f"Вызываю функцию: {function_name}",
                                 "timestamp": datetime.now().isoformat(),
@@ -302,12 +315,14 @@ class TravelAgent:
                                     "tool_args": function_args
                                 }
                             }
+                            logger.info(f"📤 Yielding ACT event: {function_name} with args {function_args}")  # 🔥 УЛУЧШЕНО
+                            yield act_event
 
                             # Execute function
                             function_result = self._execute_function(function_name, function_args)
 
                             # Yield OBSERVE step
-                            yield {
+                            observe_event = {
                                 "step_type": "observe",
                                 "content": f"Результат функции {function_name}: {json.dumps(function_result, ensure_ascii=False, indent=2)}",
                                 "timestamp": datetime.now().isoformat(),
@@ -316,6 +331,8 @@ class TravelAgent:
                                     "tool_result": function_result
                                 }
                             }
+                            logger.info(f"📤 Yielding OBSERVE event: success={function_result.get('success', False)}")  # 🔥 УЛУЧШЕНО
+                            yield observe_event
 
                             # Add function result to history
                             self.sessions[session_id].append({
@@ -331,7 +348,7 @@ class TravelAgent:
                         logger.info(f"Model generated final response (length: {len(final_text) if final_text else 0})")
 
                         # Yield DONE step
-                        yield {
+                        done_event = {
                             "step_type": "done",
                             "content": final_text or "Ответ получен",
                             "timestamp": datetime.now().isoformat(),
@@ -340,8 +357,11 @@ class TravelAgent:
                                 "session_id": session_id
                             }
                         }
+                        logger.info(f"📤 Yielding DONE event with content length: {len(done_event['content'])}")  # 🔥 УЛУЧШЕНО
+                        logger.info(f"📤 DONE content preview: {done_event['content'][:100]}...")  # 🔥 ДОБАВЛЕНО: Показываем начало ответа
+                        yield done_event
 
-                        logger.info("Agent completed successfully")
+                        logger.info("✅ Agent completed successfully")
                         break
 
                 except Exception as e:
