@@ -1,7 +1,13 @@
 /**
- * Travel Agent V2 - Premium Design System
+ * Travel Agent V2 - Premium Design System (Production Ready)
  * Inspired by: ChatGPT, Claude, Perplexity, Linear
- * Version: 2.2.0
+ * Version: 2.3.0 - Final
+ * 
+ * Изменения:
+ * - Удален typing indicator (избыточен)
+ * - Plan-block заменен на plan-section (внутри thinking)
+ * - Добавлен thinking-meta для счетчика шагов
+ * - Обновлены responsive стили
  */
 
 /* ============================================================================
@@ -36,6 +42,9 @@
 
     --error: #ef4444;
     --error-light: #fee2e2;
+
+    --info: #0ea5e9;
+    --info-light: #e0f2fe;
 
     /* Shadows - Subtle & Modern */
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -103,6 +112,7 @@
         --success-light: #064e3b;
         --warning-light: #78350f;
         --error-light: #7f1d1d;
+        --info-light: #0c4a6e;
     }
 }
 
@@ -339,6 +349,8 @@ body {
     overflow-x: hidden;
     padding: var(--space-8) var(--space-6);
     background: var(--bg-primary);
+    scroll-behavior: smooth;
+    scroll-padding-bottom: var(--space-8);
 }
 
 /* Better scrollbar */
@@ -360,19 +372,15 @@ body {
     background: var(--border-hover);
 }
 
-/* Message Wrapper */
-.messages-wrapper {
-    max-width: 56rem;
-    margin: 0 auto;
-    width: 100%;
-}
-
 /* ============================================================================
    MESSAGES
    ========================================================================= */
 .message {
-    margin-bottom: var(--space-8);
+    margin-bottom: var(--space-6);
     animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    max-width: 56rem;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .message:last-child {
@@ -386,24 +394,32 @@ body {
     align-items: flex-start;
 }
 
+.message.assistant {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+}
+
 .message-avatar {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     border-radius: var(--radius-full);
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 600;
     font-size: var(--text-xs);
-    color: white;
-    text-transform: uppercase;
 }
 
 .message.user .message-avatar {
     background: var(--bg-tertiary);
     color: var(--text-secondary);
+}
+
+.message.assistant .message-avatar {
+    background: var(--accent-primary);
+    color: white;
 }
 
 .message-content {
@@ -420,11 +436,139 @@ body {
     overflow-wrap: break-word;
 }
 
-/* Assistant Message */
-.message.assistant {
+/* Code in messages */
+.message-text code {
+    background: var(--bg-tertiary);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--text-primary);
+}
+
+.message-text pre {
+    background: var(--bg-secondary);
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    margin: var(--space-3) 0;
+    border: 1px solid var(--border-color);
+}
+
+.message-text pre code {
+    background: none;
+    padding: 0;
+}
+
+/* ============================================================================
+   THINKING BLOCK - Единый блок для всего процесса
+   ========================================================================= */
+.thinking-block {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    margin: var(--space-4) 0;
+    overflow: hidden;
+    box-shadow: var(--shadow-xs);
+}
+
+.thinking-header {
     display: flex;
+    align-items: center;
     gap: var(--space-4);
-    align-items: flex-start;
+    padding: var(--space-4) var(--space-5);
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast);
+}
+
+.thinking-header:hover {
+    background: var(--bg-hover);
+}
+
+.thinking-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1;
+    font-weight: 600;
+    font-size: var(--text-base);
+    color: var(--text-primary);
+}
+
+.thinking-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--info);
+    flex-shrink: 0;
+}
+
+.thinking-icon.spinning {
+    animation: spin 1s linear infinite;
+}
+
+.thinking-meta {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.thinking-chevron {
+    width: 20px;
+    height: 20px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    transition: transform var(--transition-base);
+}
+
+.thinking-block.collapsed .thinking-chevron {
+    transform: rotate(-90deg);
+}
+
+.thinking-content {
+    border-top: 1px solid var(--border-color);
+    padding: var(--space-5);
+    max-height: 800px;
+    overflow-y: auto;
+    transition: max-height var(--transition-slow), padding var(--transition-slow);
+}
+
+.thinking-block.collapsed .thinking-content {
+    max-height: 0;
+    padding: 0 var(--space-5);
+    border-top: none;
+    overflow: hidden;
+}
+
+/* Thinking Steps (routing, planning, etc) */
+.thinking-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+}
+
+.thinking-step {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.thinking-step-label {
+    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.thinking-step-text {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    line-height: 1.6;
 }
 
 /* ============================================================================
@@ -464,34 +608,53 @@ body {
     font-size: var(--text-sm);
     color: var(--text-tertiary);
     margin-left: auto;
+    white-space: nowrap;
 }
 
-/* Plan Steps */
-.plan-section .plan-step {
+.plan-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+/* Plan Step */
+.plan-step {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: var(--space-4);
-    margin-bottom: var(--space-3);
     transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
 }
 
-.plan-section .plan-step:last-child {
-    margin-bottom: 0;
-}
-
-.plan-section .plan-step.active {
+/* Active state with progress bar */
+.plan-step.active {
     border-color: var(--accent-primary);
     background: var(--accent-light);
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
 }
 
-.plan-section .plan-step.completed {
-    opacity: 0.7;
+.plan-step.active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 2px;
+    width: 100%;
+    background: linear-gradient(90deg, 
+        transparent 0%, 
+        var(--accent-primary) 50%, 
+        transparent 100%);
+    animation: progress 1.5s ease-in-out infinite;
+}
+
+.plan-step.completed {
+    opacity: 0.85;
     border-color: var(--success);
 }
 
-.plan-section .plan-step.failed {
+.plan-step.failed {
     border-color: var(--error);
     background: var(--error-light);
 }
@@ -527,6 +690,7 @@ body {
     flex-wrap: wrap;
     font-size: var(--text-sm);
     color: var(--text-tertiary);
+    margin-bottom: var(--space-2);
 }
 
 .plan-step-action {
@@ -535,6 +699,7 @@ body {
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
     font-size: var(--text-xs);
+    color: var(--text-secondary);
 }
 
 .plan-step-time {
@@ -565,108 +730,6 @@ body {
 
 .plan-step-status.failed {
     color: var(--error);
-}
-
-/* ============================================================================
-   THINKING BLOCK
-   ========================================================================= */
-.thinking-block {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    margin: var(--space-4) 0;
-    overflow: hidden;
-    box-shadow: var(--shadow-xs);
-}
-
-.thinking-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-4) var(--space-5);
-    cursor: pointer;
-    user-select: none;
-    transition: background var(--transition-fast);
-}
-
-.thinking-header:hover {
-    background: var(--bg-hover);
-}
-
-.thinking-title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex: 1;
-    font-weight: 600;
-    font-size: var(--text-base);
-    color: var(--text-primary);
-}
-
-.thinking-icon {
-    width: 18px;
-    height: 18px;
-    color: var(--accent-primary);
-    flex-shrink: 0;
-}
-
-.thinking-icon.spinning {
-    animation: spin 1s linear infinite;
-}
-
-.thinking-meta {
-    font-size: var(--text-sm);
-    color: var(--text-tertiary);
-    white-space: nowrap;
-}
-
-.thinking-chevron {
-    width: 20px;
-    height: 20px;
-    color: var(--text-tertiary);
-    flex-shrink: 0;
-    transition: transform var(--transition-base);
-}
-
-.thinking-block.collapsed .thinking-chevron {
-    transform: rotate(-90deg);
-}
-
-.thinking-content {
-    border-top: 1px solid var(--border-color);
-    padding: var(--space-4) var(--space-5);
-    max-height: 800px;
-    overflow: hidden;
-    transition: max-height var(--transition-slow), padding var(--transition-slow);
-}
-
-.thinking-block.collapsed .thinking-content {
-    max-height: 0;
-    padding: 0 var(--space-5);
-}
-
-.thinking-steps {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    margin-bottom: var(--space-4);
-}
-
-.thinking-step {
-    padding: var(--space-2) 0;
-    font-size: var(--text-sm);
-    line-height: 1.6;
-    color: var(--text-secondary);
-}
-
-.thinking-step-label {
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: var(--space-1);
-}
-
-.thinking-step-text {
-    color: var(--text-secondary);
 }
 
 /* ============================================================================
@@ -802,23 +865,27 @@ body {
     }
 }
 
-@keyframes typing {
-    0%, 60%, 100% {
-        opacity: 0.3;
-        transform: translateY(0);
-    }
-    30% {
-        opacity: 1;
-        transform: translateY(-6px);
-    }
-}
-
 @keyframes pulse {
     0%, 100% {
         opacity: 1;
     }
     50% {
         opacity: 0.5;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes progress {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
     }
 }
 
@@ -872,7 +939,7 @@ body {
     }
 
     .message {
-        margin-bottom: var(--space-6);
+        margin-bottom: var(--space-5);
     }
 
     .message-avatar {
@@ -893,11 +960,17 @@ body {
         gap: var(--space-3);
     }
 
+    .thinking-content,
+    .thinking-block.collapsed .thinking-content {
+        padding-left: var(--space-4);
+        padding-right: var(--space-4);
+    }
+
     .plan-section {
         padding: var(--space-3);
     }
 
-    .plan-section .plan-step {
+    .plan-step {
         padding: var(--space-3);
     }
 
@@ -905,14 +978,6 @@ body {
         flex-direction: column;
         align-items: flex-start;
         gap: var(--space-2);
-    }
-
-    .thinking-header {
-        padding: var(--space-3) var(--space-4);
-    }
-
-    .thinking-content {
-        padding: var(--space-3) var(--space-4);
     }
 }
 
