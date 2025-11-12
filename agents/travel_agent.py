@@ -243,17 +243,20 @@ class TravelAgent:
                     "data": result.data
                 })
 
-        # Формируем промпт для синтеза
-        synthesis_prompt = f"""Ты - Travel Agent. Сформируй дружелюбный и полезный ответ для пользователя.
+        # Сериализуем данные в JSON строку
+        data_json = json.dumps(data_summary, ensure_ascii=False, indent=2)
+
+        # Формируем промпт для синтеза (используем переменные вместо f-string)
+        synthesis_prompt = """Ты - Travel Agent. Сформируй дружелюбный и полезный ответ для пользователя.
 
 ЗАПРОС ПОЛЬЗОВАТЕЛЯ:
 {query}
 
 ЦЕЛЬ ПЛАНА:
-{plan.goal}
+{goal}
 
 СОБРАННЫЕ ДАННЫЕ:
-{json.dumps(data_summary, ensure_ascii=False, indent=2)}
+{data}
 
 ЗАДАЧА:
 Создай краткий, информативный и дружелюбный ответ. Включи все важные детали.
@@ -264,7 +267,11 @@ class TravelAgent:
 
         from langchain.prompts import ChatPromptTemplate
         prompt = ChatPromptTemplate.from_template(synthesis_prompt)
-        messages = prompt.format_messages()
+        messages = prompt.format_messages(
+            query=query,
+            goal=plan.goal,
+            data=data_json
+        )
 
         response = await self.llm.ainvoke(messages)
 
