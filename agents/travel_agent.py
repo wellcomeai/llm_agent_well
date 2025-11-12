@@ -1,20 +1,43 @@
 """
-Travel Agent with OpenAI and ReAct Pattern.
+Travel Agent with Plan-and-Execute Architecture - Version 2.0
 
-This agent helps users plan trips by:
-1. Getting weather information for destinations
-2. Searching for flights
-3. Providing travel recommendations
+Новая архитектура:
+1. Router → классификация запросов (simple vs agent)
+2. Planner → создание структурированных планов
+3. Orchestrator → параллельное выполнение
+4. Reflector → проверка результатов и replan
 
-Uses ReAct pattern: Think → Act → Observe → Repeat
+Преимущества над ReAct:
+- Параллельное выполнение независимых шагов
+- Показ плана пользователю ДО выполнения
+- Меньше путаницы в контексте
+- Лучше handling ошибок
 """
 
 import os
-import json
 import logging
+import json
 from datetime import datetime
 from typing import AsyncGenerator, Dict, Any, Optional
-from openai import AsyncOpenAI
+from langchain_openai import ChatOpenAI
+from langchain.memory import ConversationSummaryBufferMemory
+from dotenv import load_dotenv
+
+# Import core components
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.router import QueryRouter
+from core.planner import TaskPlanner
+from core.orchestrator import PlanOrchestrator
+from core.reflector import ResultReflector
+from core.models import RouteType, ReflectionStatus
+
+# Import tools
+from functions.weather import get_weather
+from functions.flights import search_flights
+
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(
@@ -23,65 +46,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Import our custom functions
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from functions.weather import get_weather
-from functions.flights import search_flights
 
-
-# System instructions with explicit ReAct pattern
-SYSTEM_INSTRUCTIONS = """
-Ты - профессиональный помощник по планированию путешествий (Travel Agent).
-
-Твоя роль:
-- Помогать пользователям планировать поездки
-- Получать информацию о погоде в городах назначения
-- Искать подходящие рейсы
-- Давать полезные рекомендации для путешественников
-
-ВАЖНО: Ты используешь ReAct паттерн (Reasoning and Acting):
-
-**ReAct Pattern Flow:**
-
-1. THINK (Размышление):
-   - Проанализируй запрос пользователя
-   - Определи, какую информацию нужно собрать
-   - Составь пошаговый план действий
-   - НЕ делай все действия сразу!
-
-2. ACT (Действие):
-   - Выполни ОДНО действие из плана
-   - Вызови соответствующий инструмент (get_weather или search_flights)
-   - Подожди результата
-
-3. OBSERVE (Наблюдение):
-   - Проанализируй полученный результат
-   - Определи, достаточно ли информации
-   - Реши, нужны ли дополнительные действия
-
-4. REPEAT (Повтор):
-   - Если нужно больше информации - вернись к шагу THINK
-   - Если информации достаточно - переходи к DONE
-
-5. DONE (Завершение):
-   - Сформулируй итоговый ответ пользователю
-   - Включи всю собранную информацию
-   - Дай полезные рекомендации
-
-**Правила:**
-- НЕ вызывай все функции сразу
-- Делай шаги последовательно
-- Если информации недостаточно - спрашивай у пользователя
-- Всегда объясняй свои рассуждения
-- Будь дружелюбным и полезным
-- Отвечай на русском языке (но города называй по-английски для API)
-"""
-
+# ============================================================================
+# TRAVEL AGENT V2 (Plan-and-Execute)
+# ============================================================================
 
 class TravelAgent:
     """
-    Travel Agent using OpenAI with ReAct pattern.
+    Travel Agent с Plan-and-Execute архитектурой.
+
+    Pipeline:
+    1. Router → определить нужен ли агент
+    2. Planner → создать план
+    3. Показать план пользователю
+    4. Orchestrator → выполнить параллельно
+    5. Reflector → проверить результаты
+    6. Если нужен replan → goto 2
+    7. Синтезировать финальный ответ
     """
 
     def __init__(
@@ -91,290 +72,375 @@ class TravelAgent:
         temperature: float = 0.7,
         max_tokens: int = 2000
     ):
-        """
-        Initialize the Travel Agent.
+        """Initialize Travel Agent V2."""
+        logger.info("=== Initializing TravelAgent V2 (Plan-and-Execute) ===")
 
-        Args:
-            api_key: OpenAI API key (если None, берется из env OPENAI_API_KEY)
-            model_name: Model name to use
-            temperature: Model temperature (0.0-1.0)
-            max_tokens: Maximum tokens in response
-        """
-        logger.info("=== Initializing TravelAgent (OpenAI) ===")
-        
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
-            logger.error("OPENAI_API_KEY not found in environment")
             raise ValueError("OPENAI_API_KEY не найден в environment variables")
 
         self.model_name = model_name
         self.temperature = temperature
         self.max_tokens = max_tokens
 
-        logger.info(f"Model: {model_name}, Temperature: {temperature}")
+        # Initialize LLM
+        self.llm = ChatOpenAI(
+            model=model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            streaming=True,
+            api_key=self.api_key
+        )
+        logger.info(f"LLM initialized: {model_name}")
 
-        # Initialize OpenAI client
-        try:
-            self.client = AsyncOpenAI(api_key=self.api_key)
-            logger.info("OpenAI client initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize OpenAI client: {e}")
-            raise
+        # Prepare tools
+        self.tools_dict = {
+            "get_weather": get_weather,
+            "search_flights": search_flights
+        }
 
-        # Define tools for the agent (OpenAI format)
-        self.tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Получает текущую погоду для указанного города. Возвращает температуру, описание, влажность, ветер.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "city": {
-                                "type": "string",
-                                "description": "Название города на английском (например: Paris, London, Amsterdam)"
-                            }
-                        },
-                        "required": ["city"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_flights",
-                    "description": "Ищет доступные рейсы между двумя городами. Возвращает список рейсов с ценами, временем вылета/прилета, продолжительностью.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "from_city": {
-                                "type": "string",
-                                "description": "Город вылета на английском (например: Amsterdam, London)"
-                            },
-                            "to_city": {
-                                "type": "string",
-                                "description": "Город прилета на английском (например: Paris, Berlin)"
-                            },
-                            "date": {
-                                "type": "string",
-                                "description": "Дата вылета в формате YYYY-MM-DD. Необязательный параметр, по умолчанию завтра."
-                            }
-                        },
-                        "required": ["from_city", "to_city"]
-                    }
-                }
-            }
-        ]
+        # Initialize components
+        self.router = QueryRouter(self.llm)
+        self.planner = TaskPlanner(self.llm)
+        self.orchestrator = PlanOrchestrator(self.tools_dict, max_workers=5)
+        self.reflector = ResultReflector(self.llm, max_replans=2)
 
-        # Session memory (простая реализация для MVP)
-        self.sessions: Dict[str, list] = {}
-        
-        logger.info("TravelAgent initialization complete")
+        logger.info("All components initialized successfully")
 
-    def _execute_function(self, function_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        # Session memories
+        self.memories: Dict[str, ConversationSummaryBufferMemory] = {}
+
+        logger.info("TravelAgent V2 ready!")
+
+    def _get_memory(self, session_id: str) -> ConversationSummaryBufferMemory:
+        """Get or create memory for session."""
+        if session_id not in self.memories:
+            logger.info(f"Creating new memory for session: {session_id}")
+
+            self.memories[session_id] = ConversationSummaryBufferMemory(
+                llm=self.llm,
+                max_token_limit=1000,
+                memory_key="chat_history",
+                return_messages=True
+            )
+
+        return self.memories[session_id]
+
+    async def _synthesize_final_answer(
+        self,
+        query: str,
+        execution_result: Any,
+        plan: Any
+    ) -> str:
         """
-        Execute a function call.
+        Синтезировать финальный ответ из результатов выполнения.
 
         Args:
-            function_name: Name of the function to call
-            arguments: Function arguments
+            query: Исходный запрос
+            execution_result: Результаты выполнения плана
+            plan: План который был выполнен
 
         Returns:
-            Function result
+            Финальный ответ для пользователя
         """
-        logger.info(f"Executing function: {function_name} with args: {arguments}")
-        
-        try:
-            if function_name == "get_weather":
-                result = get_weather(**arguments)
-                logger.info(f"get_weather result: {result.get('success', False)}")
-                return result
-            elif function_name == "search_flights":
-                result = search_flights(**arguments)
-                logger.info(f"search_flights result: {result.get('success', False)}")
-                return result
-            else:
-                logger.error(f"Unknown function: {function_name}")
-                return {
-                    "success": False,
-                    "error": f"Unknown function: {function_name}"
-                }
-        except Exception as e:
-            logger.error(f"Error executing {function_name}: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": f"Error in {function_name}: {str(e)}"
-            }
+        logger.info("Synthesizing final answer")
 
-    async def run(
+        # Собираем все успешные результаты
+        data_summary = []
+
+        for step_id, result in execution_result.results.items():
+            if result.success and result.data:
+                data_summary.append({
+                    "step_id": step_id,
+                    "data": result.data
+                })
+
+        # Формируем промпт для синтеза
+        synthesis_prompt = f"""Ты - Travel Agent. Сформируй дружелюбный и полезный ответ для пользователя.
+
+ЗАПРОС ПОЛЬЗОВАТЕЛЯ:
+{query}
+
+ЦЕЛЬ ПЛАНА:
+{plan.goal}
+
+СОБРАННЫЕ ДАННЫЕ:
+{json.dumps(data_summary, ensure_ascii=False, indent=2)}
+
+ЗАДАЧА:
+Создай краткий, информативный и дружелюбный ответ. Включи все важные детали.
+Если есть погода - упомяни её. Если есть рейсы - покажи варианты.
+Используй эмодзи для лучшей читаемости (но не переборщи).
+
+ОТВЕТ:"""
+
+        from langchain.prompts import ChatPromptTemplate
+        prompt = ChatPromptTemplate.from_template(synthesis_prompt)
+        messages = prompt.format_messages()
+
+        response = await self.llm.ainvoke(messages)
+
+        return response.content.strip()
+
+    async def process_query(
         self,
-        user_query: str,
+        query: str,
         session_id: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Run the agent with streaming ReAct loop.
+        Главный метод обработки запроса.
+
+        Pipeline:
+        1. Router → определить тип (simple/agent)
+        2. Если simple → прямой ответ
+        3. Если agent:
+           a. Planner → создать план
+           b. Yield план пользователю
+           c. Orchestrator → выполнить
+           d. Yield прогресс
+           e. Reflector → проверить
+           f. Если needs_replan → goto 3a
+           g. Yield финальный ответ
 
         Args:
-            user_query: User's question or request
-            session_id: Optional session ID for memory
+            query: Запрос пользователя
+            session_id: ID сессии
 
         Yields:
-            Step dictionaries with ReAct loop progress:
-            {
-                "step_type": "think" | "act" | "observe" | "done" | "error",
-                "content": "step content",
-                "timestamp": "ISO timestamp",
-                "metadata": {...}
-            }
+            События выполнения (для SSE streaming)
         """
         session_id = session_id or f"session_{datetime.now().timestamp()}"
-        
-        logger.info(f"=== Starting agent run for session: {session_id} ===")
-        logger.info(f"User query: {user_query}")
 
-        # Initialize or get session history
-        if session_id not in self.sessions:
-            self.sessions[session_id] = [
-                {"role": "system", "content": SYSTEM_INSTRUCTIONS}
-            ]
-            logger.info(f"Created new session: {session_id}")
+        logger.info(f"=== Processing query: {query[:100]} ===")
+        logger.info(f"Session ID: {session_id}")
 
-        # Add user message to history
-        self.sessions[session_id].append({
-            "role": "user",
-            "content": user_query
-        })
+        # Event: start
+        yield {
+            "event": "start",
+            "data": {
+                "query": query,
+                "session_id": session_id,
+                "architecture": "plan-and-execute"
+            }
+        }
 
         try:
-            # Yield start event
-            logger.info("Yielding START event")
+            # 1. ROUTING
+            yield {"event": "routing_start", "data": {"query": query}}
+
+            route_decision = await self.router.route(query)
+
             yield {
-                "step_type": "start",
-                "content": f"Обрабатываю запрос: {user_query}",
-                "timestamp": datetime.now().isoformat(),
-                "metadata": {"session_id": session_id}
+                "event": "routing_complete",
+                "data": {
+                    "route_type": route_decision.route_type,
+                    "confidence": route_decision.confidence,
+                    "reasoning": route_decision.reasoning
+                }
             }
 
-            # Run ReAct loop
-            max_iterations = 10
-            iteration = 0
+            # 2. SIMPLE ROUTE
+            if route_decision.route_type == RouteType.SIMPLE:
+                logger.info("Simple route - returning direct answer")
 
-            while iteration < max_iterations:
-                iteration += 1
-                logger.info(f"=== ReAct iteration {iteration}/{max_iterations} ===")
-
-                try:
-                    # Call OpenAI API
-                    logger.info("Calling OpenAI API...")
-                    response = await self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=self.sessions[session_id],
-                        tools=self.tools,
-                        tool_choice="auto",
-                        temperature=self.temperature,
-                        max_tokens=self.max_tokens
-                    )
-                    logger.info("Received response from OpenAI API")
-
-                    message = response.choices[0].message
-                    
-                    # Add assistant's response to history
-                    self.sessions[session_id].append(message.model_dump())
-
-                    # Check if model wants to call a function
-                    if message.tool_calls:
-                        logger.info(f"Model requested {len(message.tool_calls)} tool call(s)")
-                        
-                        for tool_call in message.tool_calls:
-                            function_name = tool_call.function.name
-                            function_args = json.loads(tool_call.function.arguments)
-
-                            logger.info(f"Tool call: {function_name}")
-
-                            # Yield ACT step
-                            yield {
-                                "step_type": "act",
-                                "content": f"Вызываю функцию: {function_name}",
-                                "timestamp": datetime.now().isoformat(),
-                                "metadata": {
-                                    "tool_name": function_name,
-                                    "tool_args": function_args
-                                }
-                            }
-
-                            # Execute function
-                            function_result = self._execute_function(function_name, function_args)
-
-                            # Yield OBSERVE step
-                            yield {
-                                "step_type": "observe",
-                                "content": f"Результат функции {function_name}: {json.dumps(function_result, ensure_ascii=False, indent=2)}",
-                                "timestamp": datetime.now().isoformat(),
-                                "metadata": {
-                                    "tool_name": function_name,
-                                    "tool_result": function_result
-                                }
-                            }
-
-                            # Add function result to history
-                            self.sessions[session_id].append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "name": function_name,
-                                "content": json.dumps(function_result, ensure_ascii=False)
-                            })
-
-                    else:
-                        # Model has generated final text response
-                        final_text = message.content
-                        logger.info(f"Model generated final response (length: {len(final_text) if final_text else 0})")
-
-                        # Yield DONE step
-                        yield {
-                            "step_type": "done",
-                            "content": final_text or "Ответ получен",
-                            "timestamp": datetime.now().isoformat(),
-                            "metadata": {
-                                "iterations": iteration,
-                                "session_id": session_id
-                            }
-                        }
-
-                        logger.info("Agent completed successfully")
-                        break
-
-                except Exception as e:
-                    logger.error(f"Error in ReAct iteration {iteration}: {e}", exc_info=True)
-                    yield {
-                        "step_type": "error",
-                        "content": f"Ошибка в итерации {iteration}: {str(e)}",
-                        "timestamp": datetime.now().isoformat(),
-                        "metadata": {
-                            "error_type": type(e).__name__,
-                            "iteration": iteration
-                        }
-                    }
-                    break
-
-            if iteration >= max_iterations:
-                logger.warning("Reached max iterations")
                 yield {
-                    "step_type": "error",
-                    "content": "Достигнут лимит итераций ReAct loop",
-                    "timestamp": datetime.now().isoformat(),
-                    "metadata": {"max_iterations": max_iterations}
+                    "event": "simple_answer",
+                    "data": {
+                        "answer": route_decision.direct_answer
+                    }
                 }
 
-        except Exception as e:
-            logger.error(f"Fatal error in agent.run(): {e}", exc_info=True)
-            yield {
-                "step_type": "error",
-                "content": f"Ошибка при обработке запроса: {str(e)}",
-                "timestamp": datetime.now().isoformat(),
-                "metadata": {"error_type": type(e).__name__}
+                # Save to memory
+                memory = self._get_memory(session_id)
+                memory.save_context(
+                    {"input": query},
+                    {"output": route_decision.direct_answer}
+                )
+
+                yield {"event": "done", "data": {"type": "simple"}}
+                return
+
+            # 3. AGENT ROUTE - Plan and Execute
+            logger.info("Agent route - starting plan-and-execute")
+
+            # Get memory context
+            memory = self._get_memory(session_id)
+            context = {
+                "chat_history": memory.chat_memory.messages if hasattr(memory, 'chat_memory') else []
             }
 
+            # Replan loop
+            max_replans = 2
+            replan_count = 0
+
+            while replan_count <= max_replans:
+                # 3a. PLANNING
+                yield {"event": "planning_start", "data": {"attempt": replan_count + 1}}
+
+                plan = await self.planner.create_plan(query, context=context)
+
+                yield {
+                    "event": "plan_created",
+                    "data": {
+                        "goal": plan.goal,
+                        "steps": [
+                            {
+                                "id": step.id,
+                                "description": step.description,
+                                "action": step.action,
+                                "params": step.params,
+                                "can_parallel": step.can_parallel,
+                                "depends_on": step.depends_on,
+                                "estimated_time": step.estimated_time_sec
+                            }
+                            for step in plan.steps
+                        ],
+                        "total_estimated_time": plan.total_estimated_time,
+                        "replan_attempt": replan_count
+                    }
+                }
+
+                # 3b. EXECUTION
+                yield {"event": "execution_start", "data": {"plan_id": id(plan)}}
+
+                # Stream callback для orchestrator
+                async def stream_callback(event):
+                    """Forward orchestrator events to SSE stream"""
+                    yield event
+
+                execution_result = await self.orchestrator.execute_plan(
+                    plan,
+                    stream_callback=stream_callback
+                )
+
+                yield {
+                    "event": "execution_complete",
+                    "data": {
+                        "success": execution_result.success,
+                        "total_time": execution_result.total_execution_time,
+                        "errors_count": len(execution_result.errors)
+                    }
+                }
+
+                # 3c. REFLECTION
+                yield {"event": "reflection_start", "data": {}}
+
+                reflection = await self.reflector.reflect(
+                    query,
+                    plan,
+                    execution_result,
+                    replan_count=replan_count
+                )
+
+                yield {
+                    "event": "reflection_complete",
+                    "data": {
+                        "status": reflection.status,
+                        "assessment": reflection.assessment,
+                        "suggestions": reflection.suggestions,
+                        "confidence": reflection.confidence
+                    }
+                }
+
+                # 3d. DECIDE NEXT ACTION
+                if reflection.status == ReflectionStatus.SUCCESS:
+                    # SUCCESS - формируем финальный ответ
+                    logger.info("Reflection: SUCCESS - generating final answer")
+
+                    final_answer = await self._synthesize_final_answer(
+                        query,
+                        execution_result,
+                        plan
+                    )
+
+                    yield {
+                        "event": "final_answer",
+                        "data": {"answer": final_answer}
+                    }
+
+                    # Save to memory
+                    memory.save_context(
+                        {"input": query},
+                        {"output": final_answer}
+                    )
+
+                    yield {"event": "done", "data": {"type": "success"}}
+                    break
+
+                elif reflection.status == ReflectionStatus.NEEDS_USER_INPUT:
+                    # Нужна информация от пользователя
+                    logger.info("Reflection: NEEDS_USER_INPUT")
+
+                    yield {
+                        "event": "needs_user_input",
+                        "data": {
+                            "questions": reflection.suggestions,
+                            "assessment": reflection.assessment
+                        }
+                    }
+
+                    yield {"event": "done", "data": {"type": "needs_input"}}
+                    break
+
+                elif reflection.status == ReflectionStatus.NEEDS_REPLAN:
+                    # Нужен replan
+                    replan_count += 1
+
+                    if replan_count > max_replans:
+                        logger.warning(f"Max replans ({max_replans}) reached")
+
+                        # Формируем ответ из того что есть
+                        final_answer = await self._synthesize_final_answer(
+                            query,
+                            execution_result,
+                            plan
+                        )
+
+                        yield {
+                            "event": "final_answer",
+                            "data": {
+                                "answer": final_answer,
+                                "note": "Достигнут лимит replans, используем имеющиеся данные"
+                            }
+                        }
+
+                        yield {"event": "done", "data": {"type": "max_replans"}}
+                        break
+
+                    logger.info(f"Reflection: NEEDS_REPLAN (attempt {replan_count + 1})")
+
+                    yield {
+                        "event": "replan",
+                        "data": {
+                            "reason": reflection.assessment,
+                            "suggestions": reflection.suggestions,
+                            "attempt": replan_count + 1
+                        }
+                    }
+
+                    # Продолжаем цикл (создаём новый план)
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error processing query: {e}", exc_info=True)
+
+            yield {
+                "event": "error",
+                "data": {
+                    "error": str(e),
+                    "type": type(e).__name__
+                }
+            }
+
+    def shutdown(self):
+        """Cleanup resources."""
+        logger.info("Shutting down TravelAgent")
+        self.orchestrator.shutdown()
+
+
+# ============================================================================
+# MAIN (для тестирования)
+# ============================================================================
 
 if __name__ == "__main__":
     import asyncio
@@ -383,15 +449,48 @@ if __name__ == "__main__":
         """Test the agent"""
         agent = TravelAgent()
 
-        print("Testing Travel Agent with ReAct pattern...\n")
+        print("Testing Travel Agent V2 (Plan-and-Execute)...\n")
 
-        # Test query
-        query = "Какая погода в Париже?"
+        # Test queries
+        queries = [
+            "Найди рейсы из Москвы в Париж на 20 января",
+            # "Спланируй поездку в Берлин",  # Должен спросить город вылета
+            # "Какая погода в Токио?",  # Только погода
+        ]
 
-        print(f"User: {query}\n")
+        for query in queries:
+            print(f"\n{'='*60}")
+            print(f"Query: {query}")
+            print('='*60)
 
-        async for step in agent.run(query):
-            print(f"[{step['step_type'].upper()}] {step['content']}\n")
+            async for event in agent.process_query(query):
+                event_type = event["event"]
+                data = event.get("data", {})
+
+                if event_type == "plan_created":
+                    print(f"\n📋 PLAN CREATED:")
+                    print(f"  Goal: {data['goal']}")
+                    print(f"  Steps ({len(data['steps'])}):")
+                    for step in data["steps"]:
+                        print(f"    {step['id']}. {step['description']} (parallel={step['can_parallel']})")
+
+                elif event_type == "step_started":
+                    print(f"  ▶️  Step {data.get('step_id')}: {data.get('data', {}).get('description', 'N/A')}")
+
+                elif event_type == "step_completed":
+                    status = "✅" if data.get("success") else "❌"
+                    print(f"  {status} Step {data.get('step_id')}: {data.get('execution_time', 0):.2f}s")
+
+                elif event_type == "final_answer":
+                    print(f"\n💬 FINAL ANSWER:")
+                    print(f"{data['answer']}\n")
+
+                elif event_type == "needs_user_input":
+                    print(f"\n❓ NEEDS USER INPUT:")
+                    for q in data.get("questions", []):
+                        print(f"  - {q}")
+
+        agent.shutdown()
 
     # Run test
     asyncio.run(test_agent())
