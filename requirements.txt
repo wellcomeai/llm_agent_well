@@ -1,5 +1,9 @@
-# Google ADK Framework
-google-adk>=0.1.0
+# LangChain Core (версии зафиксированы для совместимости)
+# Используем совместимые версии для избежания конфликтов
+langchain==0.1.20
+langchain-openai==0.0.8
+langchain-community==0.0.38
+langchain-core==0.1.52
 
 # Web Framework
 fastapi>=0.104.0

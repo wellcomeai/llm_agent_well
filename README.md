@@ -1,6 +1,6 @@
 # 🧳 Travel Agent MVP
 
-MVP агента-помощника путешествий с **ReAct паттерном** на базе **Google ADK**.
+MVP агента-помощника путешествий с **ReAct паттерном** на базе **LangChain**.
 
 ![Travel Agent Demo](https://img.shields.io/badge/status-MVP-blue)
 ![Python](https://img.shields.io/badge/python-3.11+-green)
@@ -13,6 +13,8 @@ MVP агента-помощника путешествий с **ReAct патте
 - ✅ **Real-time SSE Streaming** - наблюдайте за работой агента в реальном времени
 - ✅ **Инструменты**: получение погоды и поиск рейсов
 - ✅ **Память в рамках сессии** - контекст сохраняется во время диалога
+- ✅ **LangChain Framework** - профессиональный фреймворк для LLM агентов
+- ✅ **Smart Memory** - ConversationSummaryBufferMemory для длинных диалогов
 - ✅ **Готов к деплою** на Render (или другие платформы)
 
 ## 🏗️ Архитектура
@@ -22,7 +24,7 @@ User Query
     ↓
 [FastAPI + SSE]
     ↓
-[TravelAgent (Google ADK)]
+[TravelAgent (LangChain)]
     ↓
 [ReAct Loop] ←→ [Functions: weather, flights]
     ↓
@@ -36,7 +38,7 @@ User Query
    - `flights.py` - Поиск рейсов (MVP: mock данные)
 
 2. **Agents** (`agents/`) - Агенты с ReAct паттерном
-   - `travel_agent.py` - Главный агент на Google ADK
+   - `travel_agent.py` - Главный агент на LangChain
 
 3. **API** (`api/`) - Backend сервер
    - `server.py` - FastAPI с SSE streaming
@@ -51,7 +53,7 @@ User Query
 ### Требования
 
 - Python 3.11+
-- Google API Key (для Gemini)
+- OpenAI API Key
 
 ### Установка
 
@@ -74,7 +76,7 @@ pip install -r requirements.txt
 
 # 4. Настрой .env файл
 cp .env.example .env
-# Отредактируй .env - добавь свой GOOGLE_API_KEY
+# Отредактируй .env - добавь свой OPENAI_API_KEY
 ```
 
 ### Настройка .env
@@ -82,11 +84,11 @@ cp .env.example .env
 Создай `.env` файл в корне проекта:
 
 ```bash
-# Google API Configuration
-GOOGLE_API_KEY=your-google-api-key-here
+# OpenAI Configuration
+OPENAI_API_KEY=sk-proj-your-key-here
 
 # Model Settings
-MODEL_NAME=gemini-2.0-flash-exp
+MODEL_NAME=gpt-4o-mini
 TEMPERATURE=0.7
 MAX_TOKENS=2000
 
@@ -98,9 +100,9 @@ PORT=8000
 DEBUG=true
 ```
 
-**Как получить Google API Key:**
+**Как получить OpenAI API Key:**
 
-1. Перейди на [Google AI Studio](https://makersuite.google.com/app/apikey)
+1. Перейди на [OpenAI Platform](https://platform.openai.com/api-keys)
 2. Создай новый API ключ
 3. Скопируй ключ в `.env` файл
 
@@ -243,15 +245,17 @@ python agents/travel_agent.py
 
 ### Backend
 - **Python 3.11** - Основной язык
-- **Google ADK** - Orchestration framework для агентов
+- **LangChain** - Orchestration framework для агентов
 - **FastAPI** - Современный async web framework
 - **SSE (Server-Sent Events)** - Real-time streaming
 - **Pydantic** - Валидация данных
 - **python-dotenv** - Управление переменными окружения
 
 ### AI/ML
-- **Google Gemini 2.0 Flash** - LLM для агента
+- **LangChain 0.1+** - Framework для LLM applications
+- **OpenAI GPT-4o-mini** - LLM для агента
 - **ReAct Pattern** - Reasoning and Acting paradigm
+- **ConversationSummaryBufferMemory** - Smart memory management
 
 ### Frontend
 - **Vanilla JavaScript** - Без фреймворков для простоты
@@ -274,7 +278,7 @@ llm_agent_well/
 │
 ├── agents/                 # Агенты
 │   ├── __init__.py
-│   └── travel_agent.py    # Travel Agent с Google ADK
+│   └── travel_agent.py    # Travel Agent с LangChain
 │
 ├── api/                    # FastAPI backend
 │   ├── __init__.py
@@ -422,7 +426,7 @@ logger.debug(f"Query: {query}")
 ## 📊 Roadmap
 
 ### ✅ MVP (Done)
-- [x] ReAct паттерн с Google ADK
+- [x] ReAct паттерн с LangChain
 - [x] SSE streaming
 - [x] Weather function (wttr.in)
 - [x] Flights function (mock)
@@ -457,11 +461,11 @@ MIT License - см. [LICENSE](LICENSE) файл для деталей.
 
 ## 👨‍💻 Автор
 
-Created with ❤️ using Google ADK and Gemini 2.0
+Created with ❤️ using LangChain and OpenAI
 
 ## 🙏 Acknowledgments
 
-- [Google ADK](https://github.com/google/adk) - Agent Development Kit
+- [LangChain](https://python.langchain.com/) - Framework for LLM applications
 - [FastAPI](https://fastapi.tiangolo.com/) - Web framework
 - [wttr.in](https://wttr.in) - Weather API
 - [SSE Starlette](https://github.com/sysid/sse-starlette) - SSE support

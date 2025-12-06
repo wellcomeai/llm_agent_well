@@ -179,6 +179,30 @@ search_flights.metadata = {
 }
 
 
+# ============================================================================
+# LANGCHAIN TOOL WRAPPER
+# ============================================================================
+
+from langchain.tools import tool as langchain_tool
+
+@langchain_tool
+def search_flights_tool(from_city: str, to_city: str, date: str = None) -> str:
+    """
+    Ищет доступные рейсы между двумя городами на указанную дату.
+
+    Args:
+        from_city: Город вылета (например: Amsterdam, London, Paris)
+        to_city: Город прилета (например: Paris, Berlin, Rome)
+        date: Дата в формате YYYY-MM-DD. Если не указана, используется завтра.
+
+    Returns:
+        JSON строка со списком рейсов: номер, авиакомпания, цена, время
+    """
+    import json
+    result = search_flights(from_city, to_city, date)
+    return json.dumps(result, ensure_ascii=False)
+
+
 if __name__ == "__main__":
     # Тестирование функции
     print("Testing search_flights function...")
@@ -193,4 +217,8 @@ if __name__ == "__main__":
 
     print("\n3. Testing with invalid date format:")
     result = search_flights("Paris", "Rome", "2025/01/20")
+    print(result)
+
+    print("\n4. Testing LangChain tool wrapper:")
+    result = search_flights_tool.invoke({"from_city": "Amsterdam", "to_city": "Paris"})
     print(result)

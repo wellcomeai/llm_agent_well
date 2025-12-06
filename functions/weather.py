@@ -117,6 +117,28 @@ get_weather.metadata = {
 }
 
 
+# ============================================================================
+# LANGCHAIN TOOL WRAPPER
+# ============================================================================
+
+from langchain.tools import tool as langchain_tool
+
+@langchain_tool
+def get_weather_tool(city: str) -> str:
+    """
+    Получает текущую погоду для указанного города.
+
+    Args:
+        city: Название города на английском (например: Paris, London, Amsterdam)
+
+    Returns:
+        JSON строка с информацией о погоде: температура, описание, влажность, ветер
+    """
+    import json
+    result = get_weather(city)
+    return json.dumps(result, ensure_ascii=False)
+
+
 if __name__ == "__main__":
     # Тестирование функции
     print("Testing get_weather function...")
@@ -130,4 +152,8 @@ if __name__ == "__main__":
 
     print("\n3. Testing invalid city:")
     result = get_weather("InvalidCityName123")
+    print(result)
+
+    print("\n4. Testing LangChain tool wrapper:")
+    result = get_weather_tool.invoke({"city": "Tokyo"})
     print(result)
